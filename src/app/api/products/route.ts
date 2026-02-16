@@ -221,6 +221,23 @@ export async function POST(request: NextRequest) {
         const locationId = (locationsResponse as any).data?.locations?.edges?.[0]?.node?.id;
 
         if (locationId) {
+          // Activate inventory at this location first
+          await client.request(
+            `mutation inventoryActivate($inventoryItemId: ID!, $locationId: ID!) {
+              inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId) {
+                inventoryLevel { id }
+                userErrors { field message }
+              }
+            }`,
+            {
+              variables: {
+                inventoryItemId: variant.inventoryItem.id,
+                locationId,
+              },
+            }
+          );
+
+          // Now set the quantity
           await client.request(
             `mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
               inventorySetQuantities(input: $input) {

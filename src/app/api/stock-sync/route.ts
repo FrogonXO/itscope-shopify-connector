@@ -77,6 +77,22 @@ export async function GET(request: NextRequest) {
           const locationId = (locationsResponse as any).data?.locations?.edges?.[0]?.node?.id;
 
           if (locationId) {
+            // Ensure inventory is activated at this location
+            await client.request(
+              `mutation inventoryActivate($inventoryItemId: ID!, $locationId: ID!) {
+                inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId) {
+                  inventoryLevel { id }
+                  userErrors { field message }
+                }
+              }`,
+              {
+                variables: {
+                  inventoryItemId: product.shopifyInventoryItemId,
+                  locationId,
+                },
+              }
+            );
+
             // Set inventory level
             await client.request(
               `mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
