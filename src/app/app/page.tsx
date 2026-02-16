@@ -28,6 +28,7 @@ interface TrackedProduct {
   distributorId: string;
   distributorName: string;
   shippingMode: string;
+  projectId: string | null;
   lastStock: number | null;
   lastPrice: number | null;
   lastStockSync: string | null;
@@ -61,6 +62,37 @@ interface ItScopeProduct {
   bestStock: number;
   aggregatedStock: number;
   offers: ItScopeOffer[];
+}
+
+function ProjectIdCell({ value, onSave }: { value: string; onSave: (val: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  if (editing) {
+    return (
+      <InlineStack gap="200" blockAlign="center">
+        <div style={{ width: 120 }}>
+          <TextField
+            label=""
+            labelHidden
+            value={draft}
+            onChange={setDraft}
+            autoComplete="off"
+            size="slim"
+          />
+        </div>
+        <Button size="micro" onClick={() => { onSave(draft); setEditing(false); }}>Save</Button>
+        <Button size="micro" variant="plain" onClick={() => { setDraft(value); setEditing(false); }}>Cancel</Button>
+      </InlineStack>
+    );
+  }
+
+  return (
+    <InlineStack gap="200" blockAlign="center">
+      <Text as="span" variant="bodySm">{value || "—"}</Text>
+      <Button size="micro" variant="plain" onClick={() => setEditing(true)}>Edit</Button>
+    </InlineStack>
+  );
 }
 
 export default function AppPage() {
@@ -193,6 +225,22 @@ export default function AppPage() {
     [shop]
   );
 
+  const handleUpdateProjectId = useCallback(
+    async (id: number, newProjectId: string) => {
+      try {
+        await fetch("/api/products", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shop, id, projectId: newProjectId }),
+        });
+        loadTrackedProducts();
+      } catch (e) {
+        console.error("Update failed:", e);
+      }
+    },
+    [shop]
+  );
+
   const rows = trackedProducts.map((p) => [
     p.itscopeSku,
     p.distributorName || p.distributorId,
@@ -201,6 +249,10 @@ export default function AppPage() {
     ) : (
       <Badge>Warehouse</Badge>
     ),
+    <ProjectIdCell
+      value={p.projectId || ""}
+      onSave={(val) => handleUpdateProjectId(p.id, val)}
+    />,
     p.lastStock !== null ? String(p.lastStock) : "—",
     p.lastPrice !== null ? `€${p.lastPrice.toFixed(2)}` : "—",
     p.lastStockSync
@@ -347,6 +399,7 @@ export default function AppPage() {
                       "text",
                       "text",
                       "text",
+                      "text",
                       "numeric",
                       "numeric",
                       "text",
@@ -356,6 +409,7 @@ export default function AppPage() {
                       "SKU",
                       "Distributor",
                       "Shipping",
+                      "Project-ID",
                       "Stock",
                       "Price",
                       "Last Sync",

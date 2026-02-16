@@ -155,6 +155,7 @@ export async function POST(request: NextRequest) {
                 inventoryPolicy: "DENY",
                 inventoryItem: {
                   sku: sku,
+                  tracked: true,
                 },
               },
             ],
@@ -275,6 +276,27 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// PATCH - Update a tracked product (e.g. projectId)
+export async function PATCH(request: NextRequest) {
+  const { shop, id, projectId } = await request.json();
+
+  if (!shop || !id) {
+    return NextResponse.json(
+      { error: "Missing shop or id" },
+      { status: 400 }
+    );
+  }
+
+  const updated = await prisma.trackedProduct.update({
+    where: { id: Number(id) },
+    data: {
+      projectId: projectId !== undefined ? (projectId || null) : undefined,
+    },
+  });
+
+  return NextResponse.json({ success: true, product: updated });
 }
 
 // DELETE - Remove a tracked product
