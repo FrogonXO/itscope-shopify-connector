@@ -48,16 +48,35 @@ export interface ItScopeOffer {
 export async function searchProductBySku(
   sku: string
 ): Promise<ItScopeProduct | null> {
-  const url = `${ITSCOPE_BASE_URL}/products/search/hstpid=${encodeURIComponent(sku)}/standard.xml`;
+  // ItScope requires special double-encoding for characters like /
+  // First try standard encoding, then double-encoding if no results
+  const encodedSku = sku.replace(/%/g, "%25").replace(/\//g, "%2F").replace(/#/g, "%23").replace(/ /g, "%20");
+  const doubleEncodedSku = sku.replace(/\//g, "%252F").replace(/#/g, "%2523").replace(/ /g, "%20");
 
-  const response = await fetch(url, { headers: getHeaders() });
-  if (!response.ok) {
-    console.error(`ItScope product search failed: ${response.status}`);
-    return null;
+  let response = await fetch(
+    `${ITSCOPE_BASE_URL}/products/search/hstpid=${encodedSku}/standard.xml`,
+    { headers: getHeaders() }
+  );
+
+  let xml = response.ok ? await response.text() : "";
+  let parsed = xml ? parser.parse(xml) : null;
+
+  // If no products found, try double-encoded version
+  if (!parsed?.PRODUCTLIST?.PRODUCT) {
+    console.log(`No results with standard encoding, trying double-encoding for SKU: ${sku}`);
+    response = await fetch(
+      `${ITSCOPE_BASE_URL}/products/search/hstpid=${doubleEncodedSku}/standard.xml`,
+      { headers: getHeaders() }
+    );
+
+    if (!response.ok) {
+      console.error(`ItScope product search failed: ${response.status}`);
+      return null;
+    }
+
+    xml = await response.text();
+    parsed = parser.parse(xml);
   }
-
-  const xml = await response.text();
-  const parsed = parser.parse(xml);
 
   // Navigate the ItScope XML structure
   const products = parsed?.PRODUCTLIST?.PRODUCT;
