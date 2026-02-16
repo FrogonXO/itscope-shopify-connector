@@ -1,0 +1,28 @@
+{
+  "name": "itscope-shopify-connection",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.2",
+    "@shopify/app-bridge-react": "^4.2.10",
+    "@shopify/polaris": "^13.9.5",
+    "@shopify/shopify-api": "^12.3.0",
+    "fast-xml-parser": "^5.3.6",
+    "next": "^16.1.6",
+    "prisma": "^6.19.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
+  }
+}

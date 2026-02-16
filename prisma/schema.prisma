@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id          String   @id
+  shop        String
+  state       String
+  isOnline    Boolean  @default(false)
+  scope       String?
+  expires     DateTime?
+  accessToken String
+  userId      BigInt?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TrackedProduct {
+  id                  Int      @id @default(autoincrement())
+  shop                String
+  itscopeSku          String   // Manufacturer part number (hstpid)
+  itscopeProductId    String?  // ItScope internal product ID
+  shopifyProductId    String?  // Shopify product GID
+  shopifyVariantId    String?  // Shopify variant GID
+  shopifyInventoryItemId String? // For inventory updates
+  distributorId       String   // Selected ItScope distributor ID
+  distributorName     String?
+  shippingMode        String   @default("warehouse") // "dropship" or "warehouse"
+  lastStockSync       DateTime?
+  lastPrice           Float?
+  lastStock           Int?
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([shop, itscopeSku])
+  @@index([shop])
+}
+
+model Order {
+  id                  Int      @id @default(autoincrement())
+  shop                String
+  shopifyOrderId      String   // Shopify order GID
+  shopifyOrderNumber  String?  // Human-readable order number
+  itscopeDealId       String?  // ItScope deal/order ID
+  itscopeOwnOrderId   String?  // Our custom order ID sent to ItScope
+  distributorId       String
+  status              String   @default("pending") // pending, sent, confirmed, shipped, delivered, error
+  trackingNumber      String?
+  serialNumbers       String?  // JSON array of serial numbers
+  errorMessage        String?
+  dropship            Boolean  @default(false)
+  lastStatusCheck     DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([shop, shopifyOrderId])
+  @@index([status])
+  @@index([shop])
+}

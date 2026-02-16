@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:guide.itscope.com)",
+      "mcp__claude_ai_Vercel__search_vercel_documentation",
+      "WebFetch(domain:redocly.github.io)",
+      "WebFetch(domain:api.itscope.com)",
+      "WebSearch",
+      "Bash(node:*)",
+      "Bash(npm:*)",
+      "Bash(npx prisma:*)",
+      "Bash(npx next build:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}
