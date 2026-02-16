@@ -31,92 +31,110 @@ export interface ItScopeProduct {
   manufacturer: string;
   manufacturerSku: string;
   ean: string;
-  description: string;
+  shortDescription: string;
+  longDescription: string;
   imageUrl: string;
+  imageThumb: string;
+  bestPrice: number;
+  bestStock: number;
+  aggregatedStock: number;
   offers: ItScopeOffer[];
 }
 
 export interface ItScopeOffer {
+  supplierItemId: string;
   distributorId: string;
   distributorName: string;
+  supplierSKU: string;
   price: number;
+  priceCalc: number;
   stock: number;
-  availabilityStatus: string;
-  deliveryTime: string;
+  stockStatusText: string;
+  condition: string;
+  available: boolean;
 }
 
 export async function searchProductBySku(
   sku: string
 ): Promise<ItScopeProduct | null> {
-  // Try multiple encoding strategies for ItScope API
+  // ItScope requires special encoding for / and # in SKUs
+  // Try standard encoding first, then double-encoding
   const encodingStrategies = [
-    encodeURIComponent(sku),                                    // standard: MDE04D%2FA
-    sku.replace(/\//g, "%2F").replace(/#/g, "%23").replace(/ /g, "%20"), // manual: MDE04D%2FA
-    sku.replace(/\//g, "%252F").replace(/#/g, "%2523").replace(/ /g, "%20"), // double: MDE04D%252FA
-    sku, // raw - no encoding
+    encodeURIComponent(sku),
+    sku.replace(/\//g, "%252F").replace(/#/g, "%2523").replace(/ /g, "%20"),
   ];
 
-  let xml = "";
-  let parsed: any = null;
-
   for (const encoded of encodingStrategies) {
-    const url = `${ITSCOPE_BASE_URL}/products/search/hstpid=${encoded}/standard.xml`;
-    console.log(`ItScope search attempt: ${url}`);
+    const url = `${ITSCOPE_BASE_URL}/products/search/hstpid=${encoded}/standard.xml?plzproducts=true`;
+    console.log(`ItScope search: ${url}`);
 
     const response = await fetch(url, { headers: getHeaders() });
-    console.log(`ItScope response status: ${response.status}`);
-
     if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(`ItScope error body: ${errorBody.substring(0, 500)}`);
+      console.error(`ItScope search failed: ${response.status}`);
       continue;
     }
 
-    xml = await response.text();
-    console.log(`ItScope response body (first 500 chars): ${xml.substring(0, 500)}`);
-    parsed = parser.parse(xml);
+    const xml = await response.text();
+    const parsed = parser.parse(xml);
 
-    if (parsed?.PRODUCTLIST?.PRODUCT) {
-      console.log(`Found product with encoding strategy: ${encoded}`);
-      break;
-    }
+    // ItScope returns: <products><product>...</product></products>
+    const products = parsed?.products?.product;
+    if (!products) continue;
 
-    // Reset if no product found
-    parsed = null;
+    const product = Array.isArray(products) ? products[0] : products;
+    return parseProduct(product, sku);
   }
 
-  // Navigate the ItScope XML structure
-  const products = parsed?.PRODUCTLIST?.PRODUCT;
-  if (!products) return null;
+  return null;
+}
 
-  const product = Array.isArray(products) ? products[0] : products;
-
-  // Extract offers/price lines
-  const priceLines = product?.PRICELINES?.PRICELINE;
+function parseProduct(product: any, sku: string): ItScopeProduct {
+  // Extract supplier offers from supplierItems.supplierItem[]
   const offers: ItScopeOffer[] = [];
+  const supplierItems = product?.supplierItems?.supplierItem;
 
-  if (priceLines) {
-    const lines = Array.isArray(priceLines) ? priceLines : [priceLines];
-    for (const line of lines) {
+  if (supplierItems) {
+    const items = Array.isArray(supplierItems) ? supplierItems : [supplierItems];
+    for (const item of items) {
+      // Skip refurbished/bulk items and items with zero price
+      const condition = item.conditionName || "";
+      const price = parseFloat(item.price || "0");
+
       offers.push({
-        distributorId: line?.SUPPLIER?.["@_id"] || line?.SUPPLIER?.ID || "",
-        distributorName: line?.SUPPLIER?.NAME || line?.SUPPLIER?.["#text"] || "",
-        price: parseFloat(line?.PRICE?.AMOUNT || line?.PRICE || "0"),
-        stock: parseInt(line?.STOCK?.QUANTITY || line?.STOCK || "0", 10),
-        availabilityStatus: line?.STOCK?.STATUS || line?.AVAILABILITY || "",
-        deliveryTime: line?.DELIVERYTIME || "",
+        supplierItemId: String(item.id || ""),
+        distributorId: String(item.supplierId || ""),
+        distributorName: item.supplierName || "",
+        supplierSKU: String(item.supplierSKU || ""),
+        price,
+        priceCalc: parseFloat(item.priceCalc || "0"),
+        stock: parseInt(item.stock || "0", 10),
+        stockStatusText: item.stockStatusText || "",
+        condition,
+        available: (item.stockStatus === 1 || item.stockStatus === 3) && price > 0,
       });
     }
   }
 
+  // Sort offers: available first, then by price ascending
+  offers.sort((a, b) => {
+    if (a.available && !b.available) return -1;
+    if (!a.available && b.available) return 1;
+    return a.price - b.price;
+  });
+
   return {
-    productId: product?.["@_id"] || product?.ID || "",
-    name: product?.NAME || product?.TITLE || "",
-    manufacturer: product?.MANUFACTURER?.NAME || product?.MANUFACTURER || "",
-    manufacturerSku: product?.MANUFACTURERSKU || product?.HSTPID || sku,
-    ean: product?.EAN || "",
-    description: product?.DESCRIPTION || product?.LONGDESCRIPTION || "",
-    imageUrl: product?.IMAGE?.URL || product?.IMAGEURL || "",
+    productId: String(product.puid || ""),
+    name: product.productName || "",
+    manufacturer: product.manufacturerName || "",
+    manufacturerSku: product.manufacturerSKU || sku,
+    ean: String(product.ean || ""),
+    shortDescription: product.shortDescription || "",
+    longDescription: product.longDescription || "",
+    imageUrl: product.imageHighRes1 || product.imageThumb || "",
+    imageThumb: product.imageThumb || "",
+    bestPrice: parseFloat(product.price || "0"),
+    bestStock: parseInt(product.stock || "0", 10),
+    aggregatedStock: parseInt(product.aggregatedStock || "0", 10),
     offers,
   };
 }
@@ -137,20 +155,25 @@ export async function getProductStock(
   const xml = await response.text();
   const parsed = parser.parse(xml);
 
-  const product = parsed?.PRODUCTLIST?.PRODUCT || parsed?.PRODUCT;
+  // products/id returns same structure as search
+  const product = parsed?.products?.product;
   if (!product) return [];
 
-  const priceLines = product?.PRICELINES?.PRICELINE;
-  if (!priceLines) return [];
+  const supplierItems = product?.supplierItems?.supplierItem;
+  if (!supplierItems) return [];
 
-  const lines = Array.isArray(priceLines) ? priceLines : [priceLines];
-  return lines.map((line: any) => ({
-    distributorId: line?.SUPPLIER?.["@_id"] || line?.SUPPLIER?.ID || "",
-    distributorName: line?.SUPPLIER?.NAME || line?.SUPPLIER?.["#text"] || "",
-    price: parseFloat(line?.PRICE?.AMOUNT || line?.PRICE || "0"),
-    stock: parseInt(line?.STOCK?.QUANTITY || line?.STOCK || "0", 10),
-    availabilityStatus: line?.STOCK?.STATUS || line?.AVAILABILITY || "",
-    deliveryTime: line?.DELIVERYTIME || "",
+  const items = Array.isArray(supplierItems) ? supplierItems : [supplierItems];
+  return items.map((item: any) => ({
+    supplierItemId: String(item.id || ""),
+    distributorId: String(item.supplierId || ""),
+    distributorName: item.supplierName || "",
+    supplierSKU: String(item.supplierSKU || ""),
+    price: parseFloat(item.price || "0"),
+    priceCalc: parseFloat(item.priceCalc || "0"),
+    stock: parseInt(item.stock || "0", 10),
+    stockStatusText: item.stockStatusText || "",
+    condition: item.conditionName || "",
+    available: (item.stockStatus === 1 || item.stockStatus === 3) && parseFloat(item.price || "0") > 0,
   }));
 }
 
@@ -167,7 +190,7 @@ interface OrderParams {
   orderId: string; // max 18 chars
   supplierId: string;
   dropship: boolean;
-  buyerPartyId: string; // your customer number at the distributor
+  buyerPartyId: string;
   buyerCompany: string;
   buyerStreet: string;
   buyerZip: string;
@@ -270,7 +293,6 @@ export async function sendOrder(
   supplierId: string,
   orderXml: string
 ): Promise<{ success: boolean; dealId?: string; error?: string }> {
-  // Note: Order sending uses API v2.0 endpoint as per documentation
   const url = `https://api.itscope.com/2.0/business/deals/send/${supplierId}`;
 
   const response = await fetch(url, {
@@ -319,26 +341,31 @@ export async function getDealStatus(dealId: string): Promise<DealStatus | null> 
   const xml = await response.text();
   const parsed = parser.parse(xml);
 
-  const deal = parsed?.DEALLIST?.DEAL || parsed?.DEAL;
+  // Try both uppercase and lowercase field names
+  const deal = parsed?.dealList?.deal || parsed?.DEALLIST?.DEAL || parsed?.deal || parsed?.DEAL;
   if (!deal) return null;
 
-  const dispatchDocs = deal?.DISPATCHNOTIFICATIONS?.DOCUMENT;
-  const invoiceDocs = deal?.INVOICES?.DOCUMENT;
+  const actualDeal = Array.isArray(deal) ? deal[0] : deal;
+
+  const dispatchDocs = actualDeal?.dispatchnotifications?.document ||
+    actualDeal?.DISPATCHNOTIFICATIONS?.DOCUMENT;
+  const invoiceDocs = actualDeal?.invoices?.document ||
+    actualDeal?.INVOICES?.DOCUMENT;
 
   return {
-    dealId: deal?.ORDERID || deal?.ID || dealId,
-    status: deal?.STATUS || "",
-    statusMessage: deal?.STATUSMESSAGE || "",
-    statusDate: deal?.STATUSDATE || "",
+    dealId: actualDeal?.orderId || actualDeal?.ORDERID || actualDeal?.id || dealId,
+    status: actualDeal?.status || actualDeal?.STATUS || "",
+    statusMessage: actualDeal?.statusMessage || actualDeal?.STATUSMESSAGE || "",
+    statusDate: actualDeal?.statusDate || actualDeal?.STATUSDATE || "",
     dispatchDocumentUrl: dispatchDocs
       ? Array.isArray(dispatchDocs)
-        ? dispatchDocs[0]?.DOCUMENTURL
-        : dispatchDocs?.DOCUMENTURL
+        ? dispatchDocs[0]?.documentUrl || dispatchDocs[0]?.DOCUMENTURL
+        : dispatchDocs?.documentUrl || dispatchDocs?.DOCUMENTURL
       : undefined,
     invoiceDocumentUrl: invoiceDocs
       ? Array.isArray(invoiceDocs)
-        ? invoiceDocs[0]?.DOCUMENTURL
-        : invoiceDocs?.DOCUMENTURL
+        ? invoiceDocs[0]?.documentUrl || invoiceDocs[0]?.DOCUMENTURL
+        : invoiceDocs?.documentUrl || invoiceDocs?.DOCUMENTURL
       : undefined,
   };
 }
@@ -361,14 +388,12 @@ export async function fetchDispatchDocument(
   const dispatch = parsed?.DISPATCHNOTIFICATION;
   if (!dispatch) return { trackingNumbers, serialNumbers };
 
-  // Extract tracking from shipment parties / logistics info
   const shipmentId =
     dispatch?.DISPATCHNOTIFICATION_HEADER?.DISPATCHNOTIFICATION_INFO?.SHIPMENT_ID;
   if (shipmentId) {
     trackingNumbers.push(String(shipmentId));
   }
 
-  // Extract from dispatch items for serial numbers
   const items =
     dispatch?.DISPATCHNOTIFICATION_ITEM_LIST?.DISPATCHNOTIFICATION_ITEM;
   if (items) {

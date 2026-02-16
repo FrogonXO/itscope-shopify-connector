@@ -35,12 +35,16 @@ interface TrackedProduct {
 }
 
 interface ItScopeOffer {
+  supplierItemId: string;
   distributorId: string;
   distributorName: string;
+  supplierSKU: string;
   price: number;
+  priceCalc: number;
   stock: number;
-  availabilityStatus: string;
-  deliveryTime: string;
+  stockStatusText: string;
+  condition: string;
+  available: boolean;
 }
 
 interface ItScopeProduct {
@@ -49,8 +53,13 @@ interface ItScopeProduct {
   manufacturer: string;
   manufacturerSku: string;
   ean: string;
-  description: string;
+  shortDescription: string;
+  longDescription: string;
   imageUrl: string;
+  imageThumb: string;
+  bestPrice: number;
+  bestStock: number;
+  aggregatedStock: number;
   offers: ItScopeOffer[];
 }
 
@@ -255,10 +264,12 @@ export default function AppPage() {
                         <>
                           <Select
                             label="Select Distributor"
-                            options={searchResult.offers.map((o) => ({
-                              label: `${o.distributorName || o.distributorId} — €${o.price.toFixed(2)} — Stock: ${o.stock} (${o.availabilityStatus})`,
-                              value: o.distributorId,
-                            }))}
+                            options={searchResult.offers
+                              .filter((o) => o.available)
+                              .map((o) => ({
+                                label: `${o.distributorName} — €${o.price.toFixed(2)} — ${o.stockStatusText} (${o.condition})`,
+                                value: o.distributorId,
+                              }))}
                             value={selectedDistributor}
                             onChange={setSelectedDistributor}
                           />

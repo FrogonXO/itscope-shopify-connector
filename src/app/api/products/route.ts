@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
         variables: {
           input: {
             title: itscopeProduct.name,
-            bodyHtml: itscopeProduct.description || `<p>${itscopeProduct.name}</p>`,
+            bodyHtml: itscopeProduct.longDescription || itscopeProduct.shortDescription || `<p>${itscopeProduct.name}</p>`,
             vendor: itscopeProduct.manufacturer,
             productType: "IT Product",
             tags: ["itscope-managed"],
