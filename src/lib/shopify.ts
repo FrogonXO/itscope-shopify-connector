@@ -3,6 +3,7 @@ import {
   shopifyApi,
   ApiVersion,
   Session,
+  DeliveryMethod,
 } from "@shopify/shopify-api";
 
 // Lazy initialization to avoid build-time errors when env vars aren't set yet
@@ -25,6 +26,18 @@ function getShopifyInstance() {
       hostName,
       apiVersion: ApiVersion.January25,
       isEmbeddedApp: true,
+    });
+
+    // Register webhook handlers
+    _shopify.webhooks.addHandlers({
+      ORDERS_CREATE: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/api/webhooks",
+      },
+      APP_UNINSTALLED: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/api/webhooks",
+      },
     });
   }
   return _shopify;
