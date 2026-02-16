@@ -185,6 +185,7 @@ interface OrderLineItem {
   quantity: number;
   description: string;
   projectId?: string;
+  unitPrice?: number;
 }
 
 interface OrderParams {
@@ -244,7 +245,10 @@ export function buildOrderXml(params: OrderParams): string {
         <DESCRIPTION_SHORT>${escapeXml(item.description)}</DESCRIPTION_SHORT>
       </PRODUCT_ID>
       <QUANTITY>${item.quantity}</QUANTITY>
-      <ORDER_UNIT>C62</ORDER_UNIT>${item.projectId ? `
+      <ORDER_UNIT>C62</ORDER_UNIT>${item.unitPrice !== undefined ? `
+      <PRODUCT_PRICE_FIX>
+        <PRICE_AMOUNT>${item.unitPrice.toFixed(2)}</PRICE_AMOUNT>
+      </PRODUCT_PRICE_FIX>` : ""}${item.projectId ? `
       <SOURCING_INFO>
         <AGREEMENT>
           <ns2:AGREEMENT_ID>${escapeXml(item.projectId)}</ns2:AGREEMENT_ID>
