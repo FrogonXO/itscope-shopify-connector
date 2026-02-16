@@ -69,6 +69,7 @@ export default function AppPage() {
   const [searchResult, setSearchResult] = useState<ItScopeProduct | null>(null);
   const [selectedDistributor, setSelectedDistributor] = useState("");
   const [shippingMode, setShippingMode] = useState("warehouse");
+  const [projectId, setProjectId] = useState("");
   const [trackedProducts, setTrackedProducts] = useState<TrackedProduct[]>([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -153,6 +154,7 @@ export default function AppPage() {
           distributorId: selectedDistributor,
           distributorName: selectedOffer?.distributorName || "",
           shippingMode,
+          projectId: projectId.trim() || undefined,
         }),
       });
 
@@ -166,13 +168,14 @@ export default function AppPage() {
       setSuccess(`Product "${searchResult.name}" imported successfully!`);
       setSearchResult(null);
       setSkuInput("");
+      setProjectId("");
       loadTrackedProducts();
     } catch (e: any) {
       setError(e.message || "Import failed");
     } finally {
       setImporting(false);
     }
-  }, [searchResult, selectedDistributor, shippingMode, shop]);
+  }, [searchResult, selectedDistributor, shippingMode, projectId, shop]);
 
   const handleDelete = useCallback(
     async (id: number) => {
@@ -295,6 +298,14 @@ export default function AppPage() {
                               />
                             </InlineStack>
                           </BlockStack>
+
+                          <TextField
+                            label="Project-ID (optional)"
+                            value={projectId}
+                            onChange={setProjectId}
+                            placeholder="ItScope project ID for special pricing"
+                            autoComplete="off"
+                          />
 
                           <Button
                             variant="primary"

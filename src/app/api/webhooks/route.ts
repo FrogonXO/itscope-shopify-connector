@@ -96,6 +96,7 @@ async function handleOrderCreated(shop: string, order: any) {
           itscopeProductId: tp.itscopeProductId || "",
           quantity: lineItem.quantity,
           description: lineItem.title || tp.itscopeSku,
+          projectId: tp.projectId || undefined,
         };
       })
       .filter(Boolean) as any[];

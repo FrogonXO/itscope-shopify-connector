@@ -31,6 +31,7 @@ model TrackedProduct {
   distributorId       String   // Selected ItScope distributor ID
   distributorName     String?
   shippingMode        String   @default("warehouse") // "dropship" or "warehouse"
+  projectId           String?  // ItScope project ID for special pricing (AGREEMENT_ID)
   lastStockSync       DateTime?
   lastPrice           Float?
   lastStock           Int?

@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 // POST - Import a new product from ItScope to Shopify
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { shop, sku, distributorId, distributorName, shippingMode } = body;
+  const { shop, sku, distributorId, distributorName, shippingMode, projectId } = body;
 
   if (!shop || !sku || !distributorId) {
     return NextResponse.json(
@@ -101,6 +101,7 @@ export async function POST(request: NextRequest) {
             vendor: itscopeProduct.manufacturer,
             productType: "IT Product",
             tags: ["itscope-managed"],
+            status: "DRAFT",
           },
         },
       }
@@ -205,6 +206,44 @@ export async function POST(request: NextRequest) {
 
     const variant = defaultVariant;
 
+    // Step 4: Set initial inventory quantity
+    const initialStock = selectedOffer?.stock ?? 0;
+    if (variant?.inventoryItem?.id) {
+      try {
+        const locationsResponse = await client.request(
+          `query { locations(first: 1) { edges { node { id } } } }`
+        );
+        const locationId = (locationsResponse as any).data?.locations?.edges?.[0]?.node?.id;
+
+        if (locationId) {
+          await client.request(
+            `mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
+              inventorySetQuantities(input: $input) {
+                userErrors { field message }
+              }
+            }`,
+            {
+              variables: {
+                input: {
+                  name: "available",
+                  reason: "correction",
+                  quantities: [
+                    {
+                      inventoryItemId: variant.inventoryItem.id,
+                      locationId,
+                      quantity: initialStock,
+                    },
+                  ],
+                },
+              },
+            }
+          );
+        }
+      } catch (stockError) {
+        console.error("Initial stock set failed (non-fatal):", stockError);
+      }
+    }
+
     // Store the tracked product
     const tracked = await prisma.trackedProduct.create({
       data: {
@@ -217,6 +256,7 @@ export async function POST(request: NextRequest) {
         distributorId,
         distributorName: distributorName || "",
         shippingMode: shippingMode || "warehouse",
+        projectId: projectId || null,
         lastPrice: selectedOffer?.price,
         lastStock: selectedOffer?.stock,
         lastStockSync: new Date(),

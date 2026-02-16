@@ -184,6 +184,7 @@ interface OrderLineItem {
   itscopeProductId: string;
   quantity: number;
   description: string;
+  projectId?: string;
 }
 
 interface OrderParams {
@@ -243,7 +244,12 @@ export function buildOrderXml(params: OrderParams): string {
         <DESCRIPTION_SHORT>${escapeXml(item.description)}</DESCRIPTION_SHORT>
       </PRODUCT_ID>
       <QUANTITY>${item.quantity}</QUANTITY>
-      <ORDER_UNIT>C62</ORDER_UNIT>
+      <ORDER_UNIT>C62</ORDER_UNIT>${item.projectId ? `
+      <SOURCING_INFO>
+        <AGREEMENT>
+          <ns2:AGREEMENT_ID>${escapeXml(item.projectId)}</ns2:AGREEMENT_ID>
+        </AGREEMENT>
+      </SOURCING_INFO>` : ""}
     </ORDER_ITEM>`
     )
     .join("\n");
