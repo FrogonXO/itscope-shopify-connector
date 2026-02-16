@@ -48,34 +48,41 @@ export interface ItScopeOffer {
 export async function searchProductBySku(
   sku: string
 ): Promise<ItScopeProduct | null> {
-  // ItScope requires special double-encoding for characters like /
-  // First try standard encoding, then double-encoding if no results
-  const encodedSku = sku.replace(/%/g, "%25").replace(/\//g, "%2F").replace(/#/g, "%23").replace(/ /g, "%20");
-  const doubleEncodedSku = sku.replace(/\//g, "%252F").replace(/#/g, "%2523").replace(/ /g, "%20");
+  // Try multiple encoding strategies for ItScope API
+  const encodingStrategies = [
+    encodeURIComponent(sku),                                    // standard: MDE04D%2FA
+    sku.replace(/\//g, "%2F").replace(/#/g, "%23").replace(/ /g, "%20"), // manual: MDE04D%2FA
+    sku.replace(/\//g, "%252F").replace(/#/g, "%2523").replace(/ /g, "%20"), // double: MDE04D%252FA
+    sku, // raw - no encoding
+  ];
 
-  let response = await fetch(
-    `${ITSCOPE_BASE_URL}/products/search/hstpid=${encodedSku}/standard.xml`,
-    { headers: getHeaders() }
-  );
+  let xml = "";
+  let parsed: any = null;
 
-  let xml = response.ok ? await response.text() : "";
-  let parsed = xml ? parser.parse(xml) : null;
+  for (const encoded of encodingStrategies) {
+    const url = `${ITSCOPE_BASE_URL}/products/search/hstpid=${encoded}/standard.xml`;
+    console.log(`ItScope search attempt: ${url}`);
 
-  // If no products found, try double-encoded version
-  if (!parsed?.PRODUCTLIST?.PRODUCT) {
-    console.log(`No results with standard encoding, trying double-encoding for SKU: ${sku}`);
-    response = await fetch(
-      `${ITSCOPE_BASE_URL}/products/search/hstpid=${doubleEncodedSku}/standard.xml`,
-      { headers: getHeaders() }
-    );
+    const response = await fetch(url, { headers: getHeaders() });
+    console.log(`ItScope response status: ${response.status}`);
 
     if (!response.ok) {
-      console.error(`ItScope product search failed: ${response.status}`);
-      return null;
+      const errorBody = await response.text();
+      console.error(`ItScope error body: ${errorBody.substring(0, 500)}`);
+      continue;
     }
 
     xml = await response.text();
+    console.log(`ItScope response body (first 500 chars): ${xml.substring(0, 500)}`);
     parsed = parser.parse(xml);
+
+    if (parsed?.PRODUCTLIST?.PRODUCT) {
+      console.log(`Found product with encoding strategy: ${encoded}`);
+      break;
+    }
+
+    // Reset if no product found
+    parsed = null;
   }
 
   // Navigate the ItScope XML structure
