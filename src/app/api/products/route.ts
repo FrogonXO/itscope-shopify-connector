@@ -69,10 +69,10 @@ export async function POST(request: NextRequest) {
   const client = await getShopifyClient(shop, session.accessToken!);
 
   try {
-    // Create product in Shopify via GraphQL
+    // Step 1: Create the product (new API: no variants/images in ProductInput)
     const createProductResponse = await client.request(
-      `mutation productCreate($input: ProductInput!) {
-        productCreate(input: $input) {
+      `mutation productCreate($product: ProductCreateInput!) {
+        productCreate(product: $product) {
           product {
             id
             title
@@ -95,29 +95,12 @@ export async function POST(request: NextRequest) {
       }`,
       {
         variables: {
-          input: {
+          product: {
             title: itscopeProduct.name,
-            bodyHtml: itscopeProduct.longDescription || itscopeProduct.shortDescription || `<p>${itscopeProduct.name}</p>`,
+            descriptionHtml: itscopeProduct.longDescription || itscopeProduct.shortDescription || `<p>${itscopeProduct.name}</p>`,
             vendor: itscopeProduct.manufacturer,
             productType: "IT Product",
             tags: ["itscope-managed"],
-            variants: [
-              {
-                sku: sku,
-                price: selectedOffer?.price
-                  ? String(selectedOffer.price)
-                  : "0.00",
-                requiresShipping: true,
-                inventoryManagement: "SHOPIFY",
-                inventoryPolicy: "DENY",
-                barcode: itscopeProduct.ean || undefined,
-              },
-            ],
-            ...(itscopeProduct.imageUrl
-              ? {
-                  images: [{ src: itscopeProduct.imageUrl }],
-                }
-              : {}),
           },
         },
       }
@@ -133,7 +116,92 @@ export async function POST(request: NextRequest) {
     }
 
     const shopifyProduct = result?.product;
-    const variant = shopifyProduct?.variants?.edges?.[0]?.node;
+    const productId = shopifyProduct?.id;
+
+    // The default variant is auto-created; update it with SKU/price/barcode
+    const defaultVariant = shopifyProduct?.variants?.edges?.[0]?.node;
+
+    if (defaultVariant && productId) {
+      const variantPrice = selectedOffer?.price ? String(selectedOffer.price) : "0.00";
+
+      const variantUpdateResponse = await client.request(
+        `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+          productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+            productVariants {
+              id
+              inventoryItem {
+                id
+              }
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }`,
+        {
+          variables: {
+            productId,
+            variants: [
+              {
+                id: defaultVariant.id,
+                sku: sku,
+                price: variantPrice,
+                barcode: itscopeProduct.ean || undefined,
+                inventoryPolicy: "DENY",
+              },
+            ],
+          },
+        }
+      );
+
+      const variantResult = (variantUpdateResponse as any).data?.productVariantsBulkUpdate;
+      if (variantResult?.userErrors?.length > 0) {
+        console.error("Variant update errors:", variantResult.userErrors);
+      }
+
+      // Update the variant reference with fresh data
+      const updatedVariant = variantResult?.productVariants?.[0];
+      if (updatedVariant) {
+        defaultVariant.id = updatedVariant.id;
+        defaultVariant.inventoryItem = updatedVariant.inventoryItem;
+      }
+    }
+
+    // Step 3: Add product image if available
+    if (itscopeProduct.imageUrl && productId) {
+      try {
+        await client.request(
+          `mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+            productCreateMedia(productId: $productId, media: $media) {
+              media {
+                alt
+              }
+              mediaUserErrors {
+                field
+                message
+              }
+            }
+          }`,
+          {
+            variables: {
+              productId,
+              media: [
+                {
+                  originalSource: itscopeProduct.imageUrl,
+                  alt: itscopeProduct.name,
+                  mediaContentType: "IMAGE",
+                },
+              ],
+            },
+          }
+        );
+      } catch (imgError) {
+        console.error("Image upload failed (non-fatal):", imgError);
+      }
+    }
+
+    const variant = defaultVariant;
 
     // Store the tracked product
     const tracked = await prisma.trackedProduct.create({
