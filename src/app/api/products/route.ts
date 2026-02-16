@@ -145,10 +145,12 @@ export async function POST(request: NextRequest) {
             variants: [
               {
                 id: defaultVariant.id,
-                sku: sku,
                 price: variantPrice,
                 barcode: itscopeProduct.ean || undefined,
                 inventoryPolicy: "DENY",
+                inventoryItem: {
+                  sku: sku,
+                },
               },
             ],
           },
