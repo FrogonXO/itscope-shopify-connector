@@ -37,10 +37,14 @@ export async function POST(request: NextRequest) {
     where: { shop_itscopeSku: { shop, itscopeSku: sku } },
   });
   if (existing) {
-    return NextResponse.json(
-      { error: "Product already tracked", product: existing },
-      { status: 409 }
-    );
+    if (existing.active) {
+      return NextResponse.json(
+        { error: "Product already tracked", product: existing },
+        { status: 409 }
+      );
+    }
+    // Previously removed — delete the old record so we can re-import fresh
+    await prisma.trackedProduct.delete({ where: { id: existing.id } });
   }
 
   // Fetch product data from ItScope
