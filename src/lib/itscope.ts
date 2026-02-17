@@ -285,8 +285,12 @@ export function buildOrderXml(params: OrderParams): string {
         </PARTY>
         ${deliveryParty}
       </PARTIES>
-      ${params.dropship ? "<HEADER_UDX><UDX.DROPSHIPMENT>true</UDX.DROPSHIPMENT></HEADER_UDX>" : ""}
+      <ORDER_PARTIES_REFERENCE>
+        <ns2:BUYER_IDREF type="buyer_specific">${escapeXml(params.buyerPartyId)}</ns2:BUYER_IDREF>
+        <ns2:SUPPLIER_IDREF type="supplier_specific">${escapeXml(params.supplierId)}</ns2:SUPPLIER_IDREF>
+      </ORDER_PARTIES_REFERENCE>
       <PARTIAL_SHIPMENT_ALLOWED>true</PARTIAL_SHIPMENT_ALLOWED>
+      ${params.dropship ? "<HEADER_UDX><UDX.DROPSHIPMENT>true</UDX.DROPSHIPMENT></HEADER_UDX>" : ""}
       ${params.remarks ? `<REMARKS type="general">${escapeXml(params.remarks)}</REMARKS>` : ""}
     </ORDER_INFO>
   </ORDER_HEADER>
