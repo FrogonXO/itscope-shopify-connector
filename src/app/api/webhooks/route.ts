@@ -105,7 +105,11 @@ async function handleOrderCreated(shop: string, order: any) {
     if (orderLineItems.length === 0) continue;
 
     // Generate a unique order ID (max 18 chars)
-    const ownOrderId = `SH${order.order_number}`.substring(0, 18);
+    // Append distributor suffix for multi-distributor orders
+    const baseOrderId = `SH${order.order_number}`;
+    const ownOrderId = byDistributor.size > 1
+      ? `${baseOrderId}-${distributorId.slice(-3)}`.substring(0, 18)
+      : baseOrderId.substring(0, 18);
 
     const orderXml = buildOrderXml({
       orderId: ownOrderId,
