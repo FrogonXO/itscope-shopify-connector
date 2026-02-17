@@ -78,23 +78,28 @@ export async function GET(request: NextRequest) {
 
           if (locationId) {
             // Ensure inventory is activated at this location
-            await client.request(
-              `mutation inventoryActivate($inventoryItemId: ID!, $locationId: ID!) {
-                inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId) {
-                  inventoryLevel { id }
-                  userErrors { field message }
+            try {
+              await client.request(
+                `mutation inventoryActivate($inventoryItemId: ID!, $locationId: ID!) {
+                  inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId) {
+                    inventoryLevel { id }
+                    userErrors { field message }
+                  }
+                }`,
+                {
+                  variables: {
+                    inventoryItemId: product.shopifyInventoryItemId,
+                    locationId,
+                  },
                 }
-              }`,
-              {
-                variables: {
-                  inventoryItemId: product.shopifyInventoryItemId,
-                  locationId,
-                },
-              }
-            );
+              );
+            } catch (activateError) {
+              console.warn(`inventoryActivate failed for ${product.itscopeSku} (may already be active):`, activateError);
+            }
 
             // Set inventory level
-            await client.request(
+            console.log(`Setting inventory for ${product.itscopeSku}: itemId=${product.shopifyInventoryItemId}, locationId=${locationId}, qty=${newStock}`);
+            const invResponse = await client.request(
               `mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
                 inventorySetQuantities(input: $input) {
                   inventoryAdjustmentGroup {
@@ -122,6 +127,10 @@ export async function GET(request: NextRequest) {
                 },
               }
             );
+            const invErrors = (invResponse as any).data?.inventorySetQuantities?.userErrors;
+            if (invErrors?.length > 0) {
+              console.error(`inventorySetQuantities errors for ${product.itscopeSku}:`, JSON.stringify(invErrors));
+            }
           }
         }
 

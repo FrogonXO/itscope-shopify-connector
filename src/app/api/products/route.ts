@@ -222,20 +222,24 @@ export async function POST(request: NextRequest) {
 
         if (locationId) {
           // Activate inventory at this location first
-          await client.request(
-            `mutation inventoryActivate($inventoryItemId: ID!, $locationId: ID!) {
-              inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId) {
-                inventoryLevel { id }
-                userErrors { field message }
+          try {
+            await client.request(
+              `mutation inventoryActivate($inventoryItemId: ID!, $locationId: ID!) {
+                inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId) {
+                  inventoryLevel { id }
+                  userErrors { field message }
+                }
+              }`,
+              {
+                variables: {
+                  inventoryItemId: variant.inventoryItem.id,
+                  locationId,
+                },
               }
-            }`,
-            {
-              variables: {
-                inventoryItemId: variant.inventoryItem.id,
-                locationId,
-              },
-            }
-          );
+            );
+          } catch (activateError) {
+            console.warn("inventoryActivate failed (may already be active):", activateError);
+          }
 
           // Now set the quantity
           await client.request(
