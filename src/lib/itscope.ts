@@ -214,23 +214,25 @@ export function buildOrderXml(params: OrderParams): string {
         <ns2:PARTY_ID type="buyer_specific">${escapeXml(params.buyerPartyId)}_DELIVERY</ns2:PARTY_ID>
         <PARTY_ROLE>delivery</PARTY_ROLE>
         <ADDRESS>
-          <NAME>${escapeXml(params.deliveryCompany || params.buyerCompany)}</NAME>
-          <NAME2>${escapeXml(params.deliveryName || "")}</NAME2>
-          <STREET>${escapeXml(params.deliveryStreet || params.buyerStreet)}</STREET>
-          <ZIP>${escapeXml(params.deliveryZip || params.buyerZip)}</ZIP>
-          <CITY>${escapeXml(params.deliveryCity || params.buyerCity)}</CITY>
-          <COUNTRY>${escapeXml(params.deliveryCountry || params.buyerCountry)}</COUNTRY>
+          <ns2:NAME>${escapeXml(params.deliveryCompany || params.buyerCompany)}</ns2:NAME>
+          <ns2:NAME2>${escapeXml(params.deliveryName || "")}</ns2:NAME2>
+          <ns2:STREET>${escapeXml(params.deliveryStreet || params.buyerStreet)}</ns2:STREET>
+          <ns2:ZIP>${escapeXml(params.deliveryZip || params.buyerZip)}</ns2:ZIP>
+          <ns2:CITY>${escapeXml(params.deliveryCity || params.buyerCity)}</ns2:CITY>
+          <ns2:COUNTRY>${escapeXml(params.deliveryCountry || params.buyerCountry)}</ns2:COUNTRY>
+          <ns2:COUNTRY_CODED>${escapeXml(params.deliveryCountry || params.buyerCountry)}</ns2:COUNTRY_CODED>
         </ADDRESS>
       </PARTY>`
     : `<PARTY>
         <ns2:PARTY_ID type="buyer_specific">${escapeXml(params.buyerPartyId)}_DELIVERY</ns2:PARTY_ID>
         <PARTY_ROLE>delivery</PARTY_ROLE>
         <ADDRESS>
-          <NAME>${escapeXml(params.buyerCompany)}</NAME>
-          <STREET>${escapeXml(params.buyerStreet)}</STREET>
-          <ZIP>${escapeXml(params.buyerZip)}</ZIP>
-          <CITY>${escapeXml(params.buyerCity)}</CITY>
-          <COUNTRY>${escapeXml(params.buyerCountry)}</COUNTRY>
+          <ns2:NAME>${escapeXml(params.buyerCompany)}</ns2:NAME>
+          <ns2:STREET>${escapeXml(params.buyerStreet)}</ns2:STREET>
+          <ns2:ZIP>${escapeXml(params.buyerZip)}</ns2:ZIP>
+          <ns2:CITY>${escapeXml(params.buyerCity)}</ns2:CITY>
+          <ns2:COUNTRY>${escapeXml(params.buyerCountry)}</ns2:COUNTRY>
+          <ns2:COUNTRY_CODED>${escapeXml(params.buyerCountry)}</ns2:COUNTRY_CODED>
         </ADDRESS>
       </PARTY>`;
 
@@ -276,18 +278,19 @@ export function buildOrderXml(params: OrderParams): string {
           <ns2:PARTY_ID type="buyer_specific">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
           <PARTY_ROLE>buyer</PARTY_ROLE>
           <ADDRESS>
-            <NAME>${escapeXml(params.buyerCompany)}</NAME>
-            <STREET>${escapeXml(params.buyerStreet)}</STREET>
-            <ZIP>${escapeXml(params.buyerZip)}</ZIP>
-            <CITY>${escapeXml(params.buyerCity)}</CITY>
-            <COUNTRY>${escapeXml(params.buyerCountry)}</COUNTRY>
+            <ns2:NAME>${escapeXml(params.buyerCompany)}</ns2:NAME>
+            <ns2:STREET>${escapeXml(params.buyerStreet)}</ns2:STREET>
+            <ns2:ZIP>${escapeXml(params.buyerZip)}</ns2:ZIP>
+            <ns2:CITY>${escapeXml(params.buyerCity)}</ns2:CITY>
+            <ns2:COUNTRY>${escapeXml(params.buyerCountry)}</ns2:COUNTRY>
+            <ns2:COUNTRY_CODED>${escapeXml(params.buyerCountry)}</ns2:COUNTRY_CODED>
           </ADDRESS>
         </PARTY>
         ${deliveryParty}
       </PARTIES>
       <ORDER_PARTIES_REFERENCE>
-        <BUYER_IDREF type="buyer_specific">${escapeXml(params.buyerPartyId)}</BUYER_IDREF>
-        <SUPPLIER_IDREF type="supplier_specific">${escapeXml(params.supplierId)}</SUPPLIER_IDREF>
+        <ns2:BUYER_IDREF type="buyer_specific">${escapeXml(params.buyerPartyId)}</ns2:BUYER_IDREF>
+        <ns2:SUPPLIER_IDREF type="supplier_specific">${escapeXml(params.supplierId)}</ns2:SUPPLIER_IDREF>
       </ORDER_PARTIES_REFERENCE>
       <PARTIAL_SHIPMENT_ALLOWED>true</PARTIAL_SHIPMENT_ALLOWED>
       ${params.dropship ? "<HEADER_UDX><UDX.DROPSHIPMENT>true</UDX.DROPSHIPMENT></HEADER_UDX>" : ""}
