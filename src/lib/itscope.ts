@@ -245,7 +245,7 @@ export function buildOrderXml(params: OrderParams): string {
         <ns2:DESCRIPTION_SHORT>${escapeXml(item.description)}</ns2:DESCRIPTION_SHORT>
       </PRODUCT_ID>
       <QUANTITY>${item.quantity}</QUANTITY>
-      <ORDER_UNIT>C62</ORDER_UNIT>${item.unitPrice !== undefined ? `
+      <ns2:ORDER_UNIT>C62</ns2:ORDER_UNIT>${item.unitPrice !== undefined ? `
       <PRODUCT_PRICE_FIX>
         <ns2:PRICE_AMOUNT>${item.unitPrice.toFixed(2)}</ns2:PRICE_AMOUNT>
       </PRODUCT_PRICE_FIX>` : ""}${item.projectId ? `
