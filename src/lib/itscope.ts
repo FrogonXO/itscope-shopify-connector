@@ -322,13 +322,16 @@ export async function sendOrder(
   });
 
   const responseText = await response.text();
+  console.log(`ItScope sendOrder response (${response.status}):`, responseText);
 
   if (!response.ok) {
     return { success: false, error: `HTTP ${response.status}: ${responseText}` };
   }
 
   const parsed = parser.parse(responseText);
-  const dealId = parsed?.DEAL?.ID || parsed?.DEAL?.ORDERID || parsed?.orderId;
+  console.log("ItScope sendOrder parsed response:", JSON.stringify(parsed));
+  const dealId = parsed?.DEAL?.ID || parsed?.DEAL?.ORDERID || parsed?.orderId
+    || parsed?.deal?.id || parsed?.deal?.orderId;
 
   return { success: true, dealId: String(dealId || "") };
 }

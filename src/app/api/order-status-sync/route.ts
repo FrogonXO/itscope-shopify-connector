@@ -14,11 +14,10 @@ export async function GET(request: NextRequest) {
 
   console.log("Starting order status sync...");
 
-  // Get all non-final orders
+  // Get all non-final orders (use itscopeDealId or itscopeOwnOrderId)
   const pendingOrders = await prisma.order.findMany({
     where: {
       status: { in: ["sent", "confirmed"] },
-      itscopeDealId: { not: null },
     },
   });
 
@@ -27,10 +26,13 @@ export async function GET(request: NextRequest) {
 
   for (const order of pendingOrders) {
     try {
-      if (!order.itscopeDealId) continue;
+      // Use itscopeDealId if available, otherwise fall back to our own order ID
+      const lookupId = order.itscopeDealId || order.itscopeOwnOrderId;
+      if (!lookupId) continue;
 
       // Check deal status in ItScope
-      const dealStatus = await getDealStatus(order.itscopeDealId);
+      console.log(`Checking status for order ${order.id}, lookupId: ${lookupId}`);
+      const dealStatus = await getDealStatus(lookupId);
       if (!dealStatus) continue;
 
       let newStatus = order.status;
