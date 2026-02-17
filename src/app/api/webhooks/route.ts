@@ -131,6 +131,10 @@ async function handleOrderCreated(shop: string, order: any) {
       remarks: `Shopify Order #${order.order_number}`,
     });
 
+    // Log the generated XML for debugging
+    console.log(`Order XML for ${ownOrderId}:`, orderXml);
+    console.log(`Buyer address: company="${process.env.COMPANY_NAME}", street="${process.env.COMPANY_STREET}", zip="${process.env.COMPANY_ZIP}", city="${process.env.COMPANY_CITY}", country="${process.env.COMPANY_COUNTRY}"`);
+
     // Send order to ItScope
     const result = await sendOrder(distributorId, orderXml);
 
