@@ -116,6 +116,7 @@ export async function GET(request: NextRequest) {
                   input: {
                     name: "available",
                     reason: "correction",
+                    ignoreCompareQuantity: true,
                     quantities: [
                       {
                         inventoryItemId: product.shopifyInventoryItemId,

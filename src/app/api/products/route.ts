@@ -253,6 +253,7 @@ export async function POST(request: NextRequest) {
                 input: {
                   name: "available",
                   reason: "correction",
+                  ignoreCompareQuantity: true,
                   quantities: [
                     {
                       inventoryItemId: variant.inventoryItem.id,
