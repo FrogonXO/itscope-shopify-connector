@@ -32,9 +32,11 @@ model TrackedProduct {
   distributorName     String?
   shippingMode        String   @default("warehouse") // "dropship" or "warehouse"
   projectId           String?  // ItScope project ID for special pricing (AGREEMENT_ID)
+  importPrice         Float?   // Buy price at time of import (set as Shopify cost)
   lastStockSync       DateTime?
-  lastPrice           Float?
+  lastPrice           Float?   // Current ItScope buy price (updated on each sync)
   lastStock           Int?
+  priceAlert          Boolean  @default(false) // True if ItScope price increased since import
   active              Boolean  @default(true)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt

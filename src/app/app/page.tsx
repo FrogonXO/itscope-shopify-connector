@@ -29,9 +29,11 @@ interface TrackedProduct {
   distributorName: string;
   shippingMode: string;
   projectId: string | null;
+  importPrice: number | null;
   lastStock: number | null;
   lastPrice: number | null;
   lastStockSync: string | null;
+  priceAlert: boolean;
   active: boolean;
 }
 
@@ -281,6 +283,24 @@ export default function AppPage() {
     [shop]
   );
 
+  const handleDismissPriceAlert = useCallback(
+    async (id: number) => {
+      try {
+        await fetch("/api/products", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shop, id, dismissPriceAlert: true }),
+        });
+        loadTrackedProducts();
+      } catch (e) {
+        console.error("Dismiss alert failed:", e);
+      }
+    },
+    [shop]
+  );
+
+  const productsWithAlerts = trackedProducts.filter((p) => p.priceAlert);
+
   const rows = trackedProducts.map((p) => [
     p.itscopeSku,
     p.distributorName || p.distributorId,
@@ -294,7 +314,19 @@ export default function AppPage() {
       onSave={(val) => handleUpdateProjectId(p.id, val)}
     />,
     p.lastStock !== null ? String(p.lastStock) : "—",
-    p.lastPrice !== null ? `€${p.lastPrice.toFixed(2)}` : "—",
+    p.lastPrice !== null ? (
+      p.priceAlert ? (
+        <InlineStack gap="200" blockAlign="center">
+          <Badge tone="warning">{`€${p.lastPrice.toFixed(2)}`}</Badge>
+          {p.importPrice !== null && (
+            <Text as="span" variant="bodySm" tone="subdued">was €{p.importPrice.toFixed(2)}</Text>
+          )}
+          <Button size="micro" variant="plain" onClick={() => handleDismissPriceAlert(p.id)}>Dismiss</Button>
+        </InlineStack>
+      ) : (
+        `€${p.lastPrice.toFixed(2)}`
+      )
+    ) : "—",
     p.lastStockSync
       ? new Date(p.lastStockSync).toLocaleString()
       : "Never",
@@ -314,6 +346,15 @@ export default function AppPage() {
         {success && (
           <Banner tone="success" onDismiss={() => setSuccess("")}>
             <p>{success}</p>
+          </Banner>
+        )}
+        {productsWithAlerts.length > 0 && (
+          <Banner tone="warning">
+            <p>
+              {productsWithAlerts.length} product{productsWithAlerts.length > 1 ? "s have" : " has"} a price increase from ItScope:{" "}
+              {productsWithAlerts.map((p) => p.itscopeSku).join(", ")}.
+              {" "}Review the prices in the table below and update your sell prices if needed.
+            </p>
           </Banner>
         )}
 

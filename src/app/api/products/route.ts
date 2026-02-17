@@ -284,6 +284,7 @@ export async function POST(request: NextRequest) {
         distributorName: distributorName || "",
         shippingMode: shippingMode || "warehouse",
         projectId: projectId || null,
+        importPrice: selectedOffer?.price || 0,
         lastPrice: selectedOffer?.price,
         lastStock: selectedOffer?.stock,
         lastStockSync: new Date(),
@@ -300,9 +301,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PATCH - Update a tracked product (e.g. projectId)
+// PATCH - Update a tracked product (e.g. projectId, dismiss price alert)
 export async function PATCH(request: NextRequest) {
-  const { shop, id, projectId } = await request.json();
+  const body = await request.json();
+  const { shop, id, projectId, dismissPriceAlert } = body;
 
   if (!shop || !id) {
     return NextResponse.json(
@@ -311,11 +313,13 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
+  const updateData: Record<string, any> = {};
+  if (projectId !== undefined) updateData.projectId = projectId || null;
+  if (dismissPriceAlert) updateData.priceAlert = false;
+
   const updated = await prisma.trackedProduct.update({
     where: { id: Number(id) },
-    data: {
-      projectId: projectId !== undefined ? (projectId || null) : undefined,
-    },
+    data: updateData,
   });
 
   return NextResponse.json({ success: true, product: updated });

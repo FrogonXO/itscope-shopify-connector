@@ -122,42 +122,21 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Update cost and sell price if buy price changed
-        if (product.shopifyVariantId && newPrice !== product.lastPrice) {
-          const sellPrice = (newPrice * 1.10).toFixed(2); // 10% margin
-          const costPrice = newPrice.toFixed(2);
-
-          await client.request(
-            `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-              productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-                productVariants { id }
-                userErrors { field message }
-              }
-            }`,
-            {
-              variables: {
-                productId: product.shopifyProductId,
-                variants: [
-                  {
-                    id: product.shopifyVariantId,
-                    price: sellPrice,
-                    inventoryItem: {
-                      cost: costPrice,
-                    },
-                  },
-                ],
-              },
-            }
-          );
+        // Check if buy price increased (alert but don't auto-update Shopify prices)
+        const referencePrice = product.importPrice ?? product.lastPrice ?? 0;
+        const priceIncreased = newPrice > referencePrice;
+        if (priceIncreased) {
+          console.warn(`Price alert for ${product.itscopeSku}: was €${referencePrice.toFixed(2)}, now €${newPrice.toFixed(2)}`);
         }
 
-        // Update tracking record
+        // Update tracking record (lastPrice tracks current ItScope price, NOT Shopify price)
         await prisma.trackedProduct.update({
           where: { id: product.id },
           data: {
             lastStock: newStock,
             lastPrice: newPrice,
             lastStockSync: new Date(),
+            priceAlert: priceIncreased ? true : product.priceAlert,
           },
         });
 
