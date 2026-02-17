@@ -127,7 +127,9 @@ export async function POST(request: NextRequest) {
     const defaultVariant = shopifyProduct?.variants?.edges?.[0]?.node;
 
     if (defaultVariant && productId) {
-      const variantPrice = selectedOffer?.price ? String(selectedOffer.price) : "0.00";
+      const buyPrice = selectedOffer?.price || 0;
+      const sellPrice = (buyPrice * 1.10).toFixed(2); // 10% margin
+      const costPrice = buyPrice.toFixed(2);
 
       const variantUpdateResponse = await client.request(
         `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
@@ -150,12 +152,13 @@ export async function POST(request: NextRequest) {
             variants: [
               {
                 id: defaultVariant.id,
-                price: variantPrice,
+                price: sellPrice,
                 barcode: itscopeProduct.ean || undefined,
                 inventoryPolicy: "DENY",
                 inventoryItem: {
                   sku: sku,
                   tracked: true,
+                  cost: costPrice,
                 },
               },
             ],

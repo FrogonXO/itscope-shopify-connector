@@ -122,26 +122,30 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Update variant price if changed
+        // Update cost and sell price if buy price changed
         if (product.shopifyVariantId && newPrice !== product.lastPrice) {
+          const sellPrice = (newPrice * 1.10).toFixed(2); // 10% margin
+          const costPrice = newPrice.toFixed(2);
+
           await client.request(
-            `mutation productVariantUpdate($input: ProductVariantInput!) {
-              productVariantUpdate(input: $input) {
-                productVariant {
-                  id
-                }
-                userErrors {
-                  field
-                  message
-                }
+            `mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+              productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                productVariants { id }
+                userErrors { field message }
               }
             }`,
             {
               variables: {
-                input: {
-                  id: product.shopifyVariantId,
-                  price: String(newPrice),
-                },
+                productId: product.shopifyProductId,
+                variants: [
+                  {
+                    id: product.shopifyVariantId,
+                    price: sellPrice,
+                    inventoryItem: {
+                      cost: costPrice,
+                    },
+                  },
+                ],
               },
             }
           );
