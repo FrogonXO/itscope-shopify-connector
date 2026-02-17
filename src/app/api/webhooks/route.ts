@@ -153,13 +153,68 @@ async function handleOrderCreated(shop: string, order: any) {
       },
     });
 
+    // Add comment to Shopify order timeline
+    const shopifyOrderGid = `gid://shopify/Order/${order.id}`;
+    const distributorLabel = products[0]?.distributorName || distributorId;
+    const productNames = orderLineItems.map((li: any) => li.description).join(", ");
+
     if (result.success) {
       console.log(
         `Order sent to ItScope: ${ownOrderId} -> Deal ${result.dealId}`
       );
+      await addOrderComment(
+        shop,
+        shopifyOrderGid,
+        `ItScope order ${ownOrderId} sent successfully to ${distributorLabel}${isDropship ? " (Dropship)" : " (Warehouse)"}. Products: ${productNames}.${result.dealId ? ` Deal-ID: ${result.dealId}` : ""}`
+      );
     } else {
       console.error(`Failed to send order ${ownOrderId}: ${result.error}`);
+      await addOrderComment(
+        shop,
+        shopifyOrderGid,
+        `ItScope order ${ownOrderId} failed to send to ${distributorLabel}. Error: ${result.error?.substring(0, 200) || "Unknown error"}`
+      );
     }
+  }
+}
+
+async function addOrderComment(shop: string, orderId: string, message: string) {
+  try {
+    const session = await getOfflineSession(shop);
+    if (!session) return;
+
+    const client = await getShopifyClient(shop, session.accessToken!);
+
+    // Update the order note
+    const result = await client.request(
+      `mutation orderUpdate($input: OrderInput!) {
+        orderUpdate(input: $input) {
+          order {
+            id
+            note
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }`,
+      {
+        variables: {
+          input: {
+            id: orderId,
+            note: message,
+          },
+        },
+      }
+    );
+
+    const errors = (result as any).data?.orderUpdate?.userErrors;
+    if (errors?.length > 0) {
+      console.error("Order comment errors:", errors);
+    }
+  } catch (error) {
+    console.error("Failed to add order comment:", error);
   }
 }
 
