@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, getLocationId } from "@/lib/db";
 import { getProductStock } from "@/lib/itscope";
 import { getOfflineSession } from "@/lib/session-storage";
 import { getShopifyClient } from "@/lib/shopify";
@@ -61,20 +61,7 @@ export async function GET(request: NextRequest) {
 
         // Update Shopify inventory if we have the inventory item ID
         if (product.shopifyInventoryItemId) {
-          // First, get the location ID
-          const locationsResponse = await client.request(
-            `query {
-              locations(first: 1) {
-                edges {
-                  node {
-                    id
-                  }
-                }
-              }
-            }`
-          );
-
-          const locationId = (locationsResponse as any).data?.locations?.edges?.[0]?.node?.id;
+          const locationId = await getLocationId(product.shop, client);
 
           if (locationId) {
             // Ensure inventory is activated at this location

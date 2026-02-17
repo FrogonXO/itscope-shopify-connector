@@ -107,16 +107,20 @@ export default function AppPage() {
   const [success, setSuccess] = useState("");
   const [importing, setImporting] = useState(false);
   const [productsLoading, setProductsLoading] = useState(true);
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState("");
+  const [locationSaving, setLocationSaving] = useState(false);
 
   // Get shop from URL params (Shopify embeds the app with ?shop=...)
   const shop = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("shop") || ""
     : "";
 
-  // Load tracked products on mount
+  // Load settings and locations on mount
   useEffect(() => {
     if (shop) {
       loadTrackedProducts();
+      loadSettings();
     }
   }, [shop]);
 
@@ -132,6 +136,42 @@ export default function AppPage() {
       console.error("Failed to load products:", e);
     } finally {
       setProductsLoading(false);
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const res = await fetch(`/api/settings?shop=${encodeURIComponent(shop)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLocations(data.locations || []);
+        if (data.selectedLocationId) {
+          setSelectedLocation(data.selectedLocationId);
+        } else if (data.locations?.length > 0) {
+          setSelectedLocation(data.locations[0].id);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load settings:", e);
+    }
+  };
+
+  const handleSaveLocation = async () => {
+    if (!selectedLocation) return;
+    setLocationSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shop, locationId: selectedLocation }),
+      });
+      if (res.ok) {
+        setSuccess("Inventory location saved!");
+      }
+    } catch (e) {
+      console.error("Failed to save location:", e);
+    } finally {
+      setLocationSaving(false);
     }
   };
 
@@ -275,6 +315,36 @@ export default function AppPage() {
           <Banner tone="success" onDismiss={() => setSuccess("")}>
             <p>{success}</p>
           </Banner>
+        )}
+
+        {locations.length > 0 && (
+          <Layout>
+            <Layout.Section>
+              <Card>
+                <BlockStack gap="400">
+                  <Text as="h2" variant="headingMd">
+                    Inventory Location
+                  </Text>
+                  <InlineStack gap="300" blockAlign="end">
+                    <div style={{ flex: 1 }}>
+                      <Select
+                        label="Select the Shopify location for ItScope inventory"
+                        options={locations.map((l) => ({
+                          label: l.name,
+                          value: l.id,
+                        }))}
+                        value={selectedLocation}
+                        onChange={setSelectedLocation}
+                      />
+                    </div>
+                    <Button onClick={handleSaveLocation} loading={locationSaving}>
+                      Save
+                    </Button>
+                  </InlineStack>
+                </BlockStack>
+              </Card>
+            </Layout.Section>
+          </Layout>
         )}
 
         <Layout>

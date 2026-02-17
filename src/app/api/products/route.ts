@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, getLocationId } from "@/lib/db";
 import { searchProductBySku } from "@/lib/itscope";
 import { getOfflineSession } from "@/lib/session-storage";
 import { getShopifyClient } from "@/lib/shopify";
@@ -215,10 +215,7 @@ export async function POST(request: NextRequest) {
     const initialStock = selectedOffer?.stock ?? 0;
     if (variant?.inventoryItem?.id) {
       try {
-        const locationsResponse = await client.request(
-          `query { locations(first: 1) { edges { node { id } } } }`
-        );
-        const locationId = (locationsResponse as any).data?.locations?.edges?.[0]?.node?.id;
+        const locationId = await getLocationId(shop, client);
 
         if (locationId) {
           // Activate inventory at this location first

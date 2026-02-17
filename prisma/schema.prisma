@@ -43,6 +43,14 @@ model TrackedProduct {
   @@index([shop])
 }
 
+model ShopSettings {
+  id         Int    @id @default(autoincrement())
+  shop       String @unique
+  locationId String // Selected Shopify location GID for inventory
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 model Order {
   id                  Int      @id @default(autoincrement())
   shop                String
