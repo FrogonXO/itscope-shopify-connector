@@ -454,7 +454,8 @@ export default function AppPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Import failed");
+        const details = data.details?.map((d: any) => d.message).join("; ");
+        setError(details ? `${data.error}: ${details}` : (data.error || "Import failed"));
         return;
       }
 

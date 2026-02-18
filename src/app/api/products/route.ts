@@ -132,13 +132,75 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    const result = (createProductResponse as any).data?.productCreate;
+    // Check for GraphQL-level errors first
+    const gqlErrors = (createProductResponse as any).errors;
+    if (gqlErrors) {
+      console.error("Shopify GraphQL errors:", JSON.stringify(gqlErrors));
+    }
+
+    let result = (createProductResponse as any).data?.productCreate;
 
     if (result?.userErrors?.length > 0) {
-      return NextResponse.json(
-        { error: "Shopify errors", details: result.userErrors },
-        { status: 422 }
-      );
+      console.error("Shopify productCreate userErrors:", JSON.stringify(result.userErrors));
+
+      // If metafields caused the error, retry without them
+      if (shopifyMetafields.length > 0) {
+        console.warn("Retrying productCreate without metafields...");
+        const retryResponse = await client.request(
+          `mutation productCreate($product: ProductCreateInput!) {
+            productCreate(product: $product) {
+              product {
+                id
+                title
+                variants(first: 1) {
+                  edges {
+                    node {
+                      id
+                      inventoryItem {
+                        id
+                      }
+                    }
+                  }
+                }
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }`,
+          {
+            variables: {
+              product: {
+                title: itscopeProduct.name,
+                descriptionHtml: itscopeProduct.longDescription || itscopeProduct.shortDescription || `<p>${itscopeProduct.name}</p>`,
+                vendor: itscopeProduct.manufacturer,
+                productType: resolvedType,
+                tags: ["itscope-managed", typeTag],
+                status: "DRAFT",
+              },
+            },
+          }
+        );
+
+        const retryResult = (retryResponse as any).data?.productCreate;
+        if (retryResult?.userErrors?.length > 0) {
+          console.error("Shopify productCreate still failed without metafields:", JSON.stringify(retryResult.userErrors));
+          return NextResponse.json(
+            { error: "Shopify errors", details: retryResult.userErrors },
+            { status: 422 }
+          );
+        }
+
+        // Use the retry result
+        result = retryResult;
+        console.warn("Product created without metafields — check metafield definitions in Shopify admin");
+      } else {
+        return NextResponse.json(
+          { error: "Shopify errors", details: result.userErrors },
+          { status: 422 }
+        );
+      }
     }
 
     const shopifyProduct = result?.product;
