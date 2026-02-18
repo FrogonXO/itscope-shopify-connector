@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     const categoryMap: Record<string, string> = {
       Laptop: "gid://shopify/TaxonomyCategory/el-6-6",       // Electronics > Computers > Laptops
       Warranty: "gid://shopify/TaxonomyCategory/pa-1",        // Product Add-Ons > Extended Warranties
-      Accessory: "gid://shopify/TaxonomyCategory/el-7-8",     // Electronics > Electronics Accessories > Computer Accessories
+      Accessory: "gid://shopify/TaxonomyCategory/pa-5",        // Product Add-Ons > Product Upgrades
     };
     const category = categoryMap[resolvedType];
 
