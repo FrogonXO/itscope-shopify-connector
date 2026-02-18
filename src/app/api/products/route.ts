@@ -293,29 +293,30 @@ export async function POST(request: NextRequest) {
     }
 
     // Store the tracked product
-    const tracked = await prisma.trackedProduct.create({
-      data: {
-        shop,
-        itscopeSku: sku,
-        itscopeProductId: itscopeProduct.productId,
-        shopifyProductId: shopifyProduct?.id,
-        shopifyVariantId: variant?.id,
-        shopifyInventoryItemId: variant?.inventoryItem?.id,
-        distributorId,
-        distributorName: distributorName || "",
-        productType: resolvedType,
-        shippingMode: shippingMode || "warehouse",
-        projectId: projectId || null,
-        importPrice: selectedOffer?.price || 0,
-        lastPrice: selectedOffer?.price,
-        lastStock: selectedOffer?.stock,
-        lastStockSync: new Date(),
-      },
-    });
+    const createData = {
+      shop,
+      itscopeSku: sku,
+      itscopeProductId: itscopeProduct.productId,
+      shopifyProductId: shopifyProduct?.id,
+      shopifyVariantId: variant?.id,
+      shopifyInventoryItemId: variant?.inventoryItem?.id,
+      distributorId,
+      distributorName: distributorName || "",
+      productType: resolvedType,
+      shippingMode: shippingMode || "warehouse",
+      projectId: projectId || null,
+      importPrice: selectedOffer?.price || 0,
+      lastPrice: selectedOffer?.price,
+      lastStock: selectedOffer?.stock,
+      lastStockSync: new Date(),
+    };
+    console.log("Prisma create data:", JSON.stringify(createData));
+    const tracked = await prisma.trackedProduct.create({ data: createData });
 
     return NextResponse.json({ success: true, product: tracked });
   } catch (error: any) {
-    console.error("Product creation error:", error);
+    console.error("Product creation error:", error?.name, error?.message);
+    if (error?.meta) console.error("Prisma meta:", JSON.stringify(error.meta));
     return NextResponse.json(
       { error: error.message || "Failed to create product in Shopify" },
       { status: 500 }
