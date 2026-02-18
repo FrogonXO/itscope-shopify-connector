@@ -61,43 +61,62 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
   const f = product.features || {};
   const values: Record<string, string> = {};
 
+  // Build named attributes map from ItScope indexed attribute pairs
+  // e.g. attributetypename3="Hauptspeicher" + attributevalue3="16GB" → attrs["hauptspeicher"] = "16GB"
+  const attrs: Record<string, string> = {};
+  for (let i = 1; i <= 20; i++) {
+    const name = f[`attributetypename${i}`];
+    const value = f[`attributevalue${i}`];
+    if (name && value) attrs[name.toLowerCase()] = value;
+  }
+
   if (type === "Laptop") {
     values["custom.brand"] = product.manufacturer || "";
 
-    // CPU: use ItScope "cpu" / "prozessor" feature, fallback to regex
-    if (f.cpu || f.prozessor) {
-      values["custom.cpu"] = f.cpu || f.prozessor;
+    // CPU: use ItScope attribute, fallback to regex
+    if (attrs["cpu"]) {
+      values["custom.cpu"] = attrs["cpu"];
     } else {
       const cpuMatch = text.match(/(?:Intel\s+Core\s+(?:Ultra\s+)?\w[\w-]*(?:\s+\w[\w-]*)?|AMD\s+Ryzen\s+\d\s+\w+|Apple\s+M\d\w*(?:\s+(?:Pro|Max|Ultra))?|Intel\s+(?:Celeron|Pentium|Core\s+i\d)[\w\s-]*?\d{4}\w*)/i);
       if (cpuMatch) values["custom.cpu"] = cpuMatch[0].trim();
     }
 
-    // RAM: use ItScope "hauptspeicher" feature, fallback to regex
-    if (f.hauptspeicher) {
-      // Extract just the GB number: "16 GB DDR5" -> "16 GB"
-      const ramNum = f.hauptspeicher.match(/(\d+)\s*GB/i);
-      values["custom.ram"] = ramNum ? `${ramNum[1]} GB` : f.hauptspeicher;
+    // RAM: use ItScope "Hauptspeicher" attribute, fallback to regex
+    if (attrs["hauptspeicher"]) {
+      const ramNum = attrs["hauptspeicher"].match(/(\d+)/);
+      values["custom.ram"] = ramNum ? `${ramNum[1]} GB` : attrs["hauptspeicher"];
     } else {
-      const ramMatch = text.match(/(\d+)\s*GB\s*(?:DDR\d|RAM|LP?DDR\d)/i) || text.match(/(\d+)\s*GB/i);
-      if (ramMatch) values["custom.ram"] = `${ramMatch[1]} GB`;
-    }
-
-    // Storage: use ItScope "festplatte" feature, fallback to regex
-    if (f.festplatte) {
-      // Extract just the number + unit: "512 GB SSD" -> "512 GB", "1 TB NVMe" -> "1 TB"
-      const storNum = f.festplatte.match(/(\d+)\s*(GB|TB)/i);
-      values["custom.storage"] = storNum ? `${storNum[1]} ${storNum[2].toUpperCase()}` : f.festplatte;
-    } else {
-      const storageMatch = text.match(/(\d+)\s*TB/i) || text.match(/(\d+)\s*(?:GB)\s*(?:SSD|NVMe|M\.2|PCIe|eMMC)/i);
-      if (storageMatch) {
-        const unit = /TB/i.test(storageMatch[0]) ? "TB" : "GB";
-        values["custom.storage"] = `${storageMatch[1]} ${unit}`;
+      const allGB = [...text.matchAll(/(\d+)\s*GB/gi)].map(m => parseInt(m[1]));
+      const unique = [...new Set(allGB)].sort((a, b) => a - b);
+      if (unique.length >= 2) {
+        values["custom.ram"] = `${unique[0]} GB`; // smaller = RAM
+      } else if (unique.length === 1) {
+        values["custom.ram"] = `${unique[0]} GB`;
       }
     }
 
-    // Screen size: use ItScope feature or regex
-    if (f.bildschirmdiagonale || f.displaygroesse || f.display) {
-      const sizeNum = (f.bildschirmdiagonale || f.displaygroesse || f.display).match(/(\d{2}[.,]?\d?)/);
+    // Storage: use ItScope "Festplatte" attribute, fallback to regex
+    if (attrs["festplatte"]) {
+      const storNum = attrs["festplatte"].match(/(\d+)/);
+      const unit = /TB/i.test(attrs["festplatte"]) ? "TB" : "GB";
+      values["custom.storage"] = storNum ? `${storNum[1]} ${unit}` : attrs["festplatte"];
+    } else {
+      const tbMatch = text.match(/(\d+)\s*TB/i);
+      if (tbMatch) {
+        values["custom.storage"] = `${tbMatch[1]} TB`;
+      } else {
+        const allGB = [...text.matchAll(/(\d+)\s*GB/gi)].map(m => parseInt(m[1]));
+        const unique = [...new Set(allGB)].sort((a, b) => a - b);
+        if (unique.length >= 2) {
+          values["custom.storage"] = `${unique[unique.length - 1]} GB`; // larger = storage
+        }
+      }
+    }
+
+    // Screen size: use ItScope "Bilddiagonale (Zoll)" attribute, fallback to regex
+    const screenAttr = attrs["bilddiagonale (zoll)"] || attrs["bildschirmdiagonale"] || attrs["bildschirmdiagonale (zoll)"];
+    if (screenAttr) {
+      const sizeNum = screenAttr.match(/(\d{2}[.,]?\d?)/);
       if (sizeNum) values["custom.screensize"] = `${sizeNum[1].replace(",", ".")}"`;
     } else {
       const screenMatch = text.match(/(\d{2}[.,]\d)\s*["″]|(\d{2}[.,]\d)\s*(?:inch|Zoll|zoll)|(\d{2})\s*["″]|(\d{2})\s*(?:inch|Zoll|zoll)/i);
@@ -107,17 +126,21 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
       }
     }
 
-    // GPU: use ItScope feature or regex
-    if (f.grafikkarte || f.gpu || f.grafik) {
-      values["custom.gpu"] = f.grafikkarte || f.gpu || f.grafik;
+    // GPU: use ItScope attribute or regex
+    const gpuAttr = attrs["grafikkarte"] || attrs["gpu"] || attrs["grafik"];
+    if (gpuAttr) {
+      values["custom.gpu"] = gpuAttr;
     } else {
       const gpuMatch = text.match(/(?:NVIDIA\s+)?GeForce\s+\w+\s*\w*\s*\w*|Intel\s+(?:Iris\s+Xe|UHD)\s*\w*|AMD\s+Radeon\s+\w+\s*\w*/i);
       if (gpuMatch) values["custom.gpu"] = gpuMatch[0].trim();
     }
 
-    // Resolution: use ItScope feature or regex
-    if (f.displayaufloesung || f.aufloesung || f.resolution) {
-      values["custom.screenresolution"] = f.displayaufloesung || f.aufloesung || f.resolution;
+    // Resolution: parse from htmlspecs (has detailed specs beyond the 5 indexed attributes)
+    const specs = f.htmlspecs || "";
+    const specsResMatch = specs.match(/Aufl.sung[^<]*<\/div><div class="ITSv">([^<]+)/i);
+    if (specsResMatch) {
+      const resNum = specsResMatch[1].match(/(\d{3,4})\s*[*xX×]\s*(\d{3,4})/);
+      values["custom.screenresolution"] = resNum ? `${resNum[1]}x${resNum[2]}` : specsResMatch[1].trim();
     } else {
       const resMatch = text.match(/(\d{3,4})\s*[xX×]\s*(\d{3,4})/);
       if (resMatch) {
