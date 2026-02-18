@@ -33,9 +33,9 @@ const PRODUCT_TYPE_METAFIELDS: Record<ProductType, MetafieldConfig[]> = {
   Laptop: [
     { key: "custom.brand", label: "Brand", placeholder: "e.g., Lenovo", autoFill: "manufacturer" },
     { key: "custom.cpu", label: "CPU", placeholder: "e.g., Intel Core i7-1365U" },
-    { key: "custom.ram", label: "RAM", placeholder: "e.g., 16 GB DDR5" },
-    { key: "custom.storage", label: "Storage", placeholder: "e.g., 512 GB SSD" },
-    { key: "custom.screensize", label: "Screen Size", placeholder: "e.g., 14 inch" },
+    { key: "custom.ram", label: "RAM", placeholder: "e.g., 16 GB" },
+    { key: "custom.storage", label: "Storage", placeholder: "e.g., 512 GB" },
+    { key: "custom.screensize", label: "Screen Size", placeholder: "e.g., 14\"" },
     { key: "custom.gpu", label: "GPU", placeholder: "e.g., Intel Iris Xe" },
     { key: "custom.screenresolution", label: "Screen Resolution", placeholder: "e.g., 1920x1200" },
     { key: "custom.feature_1_title", label: "Feature 1 Title", placeholder: "e.g., Fingerprint Reader" },
@@ -67,16 +67,36 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
     const cpuMatch = text.match(/(?:Intel\s+Core\s+(?:Ultra\s+)?\w[\w-]*(?:\s+\w[\w-]*)?|AMD\s+Ryzen\s+\d\s+\w+|Apple\s+M\d\w*(?:\s+(?:Pro|Max|Ultra))?|Intel\s+(?:Celeron|Pentium|Core\s+i\d)[\w\s-]*?\d{4}\w*)/i);
     if (cpuMatch) values["custom.cpu"] = cpuMatch[0].trim();
 
-    // RAM: 16GB, 32 GB DDR5, 8GB RAM, etc.
-    const ramMatch = text.match(/(\d+)\s*GB\s*(?:DDR\d|RAM|LP?DDR\d)/i) || text.match(/(\d+)\s*GB(?=\s)/i);
-    if (ramMatch) {
-      const ddrMatch = text.match(/DDR\d|LPDDR\d/i);
-      values["custom.ram"] = `${ramMatch[1]} GB${ddrMatch ? ` ${ddrMatch[0].toUpperCase()}` : ""}`;
+    // RAM & Storage: try qualified matches first, then fall back to heuristics
+    const ramQualified = text.match(/(\d+)\s*GB\s*(?:DDR\d|RAM|LP?DDR\d)/i);
+    const storageQualified = text.match(/(\d+)\s*(?:GB|TB)\s*(?:SSD|NVMe|M\.2|PCIe|eMMC)/i) || text.match(/(?:SSD|NVMe)\s*(\d+)\s*(?:GB|TB)/i);
+    const tbMatch = text.match(/(\d+)\s*TB/i);
+
+    if (ramQualified) {
+      values["custom.ram"] = `${ramQualified[1]} GB`;
+    }
+    if (storageQualified) {
+      const unit = /TB/i.test(storageQualified[0]) ? "TB" : "GB";
+      values["custom.storage"] = `${storageQualified[1]} ${unit}`;
+    } else if (tbMatch) {
+      values["custom.storage"] = `${tbMatch[1]} TB`;
     }
 
-    // Storage: 512GB SSD, 1TB NVMe, 256 GB SSD, etc.
-    const storageMatch = text.match(/(\d+)\s*(?:GB|TB)\s*(?:SSD|NVMe|M\.2|PCIe|eMMC)/i) || text.match(/(?:SSD|NVMe)\s*(\d+)\s*(?:GB|TB)/i);
-    if (storageMatch) values["custom.storage"] = storageMatch[0].trim();
+    // Fallback: find all GB values and assign by size (smaller = RAM, larger = storage)
+    if (!values["custom.ram"] || !values["custom.storage"]) {
+      const allGB = [...text.matchAll(/(\d+)\s*GB/gi)].map(m => parseInt(m[1]));
+      const unique = [...new Set(allGB)].sort((a, b) => a - b);
+      if (unique.length >= 2 && !values["custom.ram"] && !values["custom.storage"]) {
+        values["custom.ram"] = `${unique[0]} GB`;
+        values["custom.storage"] = `${unique[unique.length - 1]} GB`;
+      } else if (!values["custom.ram"] && unique.length >= 1) {
+        const ram = unique.find(v => v <= 64);
+        if (ram) values["custom.ram"] = `${ram} GB`;
+      } else if (!values["custom.storage"] && unique.length >= 1) {
+        const storage = unique.find(v => v >= 128);
+        if (storage) values["custom.storage"] = `${storage} GB`;
+      }
+    }
 
     // Screen size: 14", 15.6", 14 inch, 15,6 Zoll, etc.
     const screenMatch = text.match(/(\d{2}[.,]\d)\s*["″]|(\d{2}[.,]\d)\s*(?:inch|Zoll|zoll)|(\d{2})\s*["″]|(\d{2})\s*(?:inch|Zoll|zoll)/i);
