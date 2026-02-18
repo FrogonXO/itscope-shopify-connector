@@ -90,8 +90,14 @@ export async function POST(request: NextRequest) {
           })
       : [];
 
-    // Map product type to tags
+    // Map product type to tags and Shopify taxonomy categories
     const typeTag = resolvedType === "Warranty" ? "warranty" : resolvedType === "Accessory" ? "addon" : "laptop";
+    const categoryMap: Record<string, string> = {
+      Laptop: "gid://shopify/TaxonomyCategory/el-6-6",       // Electronics > Computers > Laptops
+      Warranty: "gid://shopify/TaxonomyCategory/pa-1",        // Product Add-Ons > Extended Warranties
+      Accessory: "gid://shopify/TaxonomyCategory/el-7-8",     // Electronics > Electronics Accessories > Computer Accessories
+    };
+    const category = categoryMap[resolvedType];
 
     // Step 1: Create the product (new API: no variants/images in ProductInput)
     const createProductResponse = await client.request(
@@ -124,6 +130,7 @@ export async function POST(request: NextRequest) {
             descriptionHtml: itscopeProduct.longDescription || itscopeProduct.shortDescription || `<p>${itscopeProduct.name}</p>`,
             vendor: itscopeProduct.manufacturer,
             productType: resolvedType,
+            category,
             tags: ["itscope-managed", typeTag],
             status: "DRAFT",
             ...(shopifyMetafields.length > 0 ? { metafields: shopifyMetafields } : {}),
@@ -176,6 +183,7 @@ export async function POST(request: NextRequest) {
                 descriptionHtml: itscopeProduct.longDescription || itscopeProduct.shortDescription || `<p>${itscopeProduct.name}</p>`,
                 vendor: itscopeProduct.manufacturer,
                 productType: resolvedType,
+                category,
                 tags: ["itscope-managed", typeTag],
                 status: "DRAFT",
               },
