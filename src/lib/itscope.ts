@@ -39,6 +39,7 @@ export interface ItScopeProduct {
   bestStock: number;
   aggregatedStock: number;
   offers: ItScopeOffer[];
+  features: Record<string, string>; // All product attributes (e.g. hauptspeicher, festplatte, cpu, etc.)
 }
 
 export interface ItScopeOffer {
@@ -122,6 +123,15 @@ function parseProduct(product: any, sku: string): ItScopeProduct {
     return a.price - b.price;
   });
 
+  // Extract all simple string/number properties as features for auto-fill
+  const features: Record<string, string> = {};
+  for (const [key, val] of Object.entries(product)) {
+    if (typeof val === "string" || typeof val === "number") {
+      features[key.toLowerCase()] = String(val);
+    }
+  }
+  console.log("ItScope product features:", JSON.stringify(features));
+
   return {
     productId: String(product.puid || ""),
     name: product.productName || "",
@@ -136,6 +146,7 @@ function parseProduct(product: any, sku: string): ItScopeProduct {
     bestStock: parseInt(product.stock || "0", 10),
     aggregatedStock: parseInt(product.aggregatedStock || "0", 10),
     offers,
+    features,
   };
 }
 

@@ -58,64 +58,74 @@ const PRODUCT_TYPE_METAFIELDS: Record<ProductType, MetafieldConfig[]> = {
 // Auto-detect metafield values from ItScope product data
 function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<string, string> {
   const text = `${product.name} ${product.shortDescription}`;
+  const f = product.features || {};
   const values: Record<string, string> = {};
 
   if (type === "Laptop") {
     values["custom.brand"] = product.manufacturer || "";
 
-    // CPU: Intel Core i7-1365U, AMD Ryzen 7 7840U, Apple M3, etc.
-    const cpuMatch = text.match(/(?:Intel\s+Core\s+(?:Ultra\s+)?\w[\w-]*(?:\s+\w[\w-]*)?|AMD\s+Ryzen\s+\d\s+\w+|Apple\s+M\d\w*(?:\s+(?:Pro|Max|Ultra))?|Intel\s+(?:Celeron|Pentium|Core\s+i\d)[\w\s-]*?\d{4}\w*)/i);
-    if (cpuMatch) values["custom.cpu"] = cpuMatch[0].trim();
-
-    // RAM & Storage: try qualified matches first, then fall back to heuristics
-    const ramQualified = text.match(/(\d+)\s*GB\s*(?:DDR\d|RAM|LP?DDR\d)/i);
-    const storageQualified = text.match(/(\d+)\s*(?:GB|TB)\s*(?:SSD|NVMe|M\.2|PCIe|eMMC)/i) || text.match(/(?:SSD|NVMe)\s*(\d+)\s*(?:GB|TB)/i);
-    const tbMatch = text.match(/(\d+)\s*TB/i);
-
-    if (ramQualified) {
-      values["custom.ram"] = `${ramQualified[1]} GB`;
-    }
-    if (storageQualified) {
-      const unit = /TB/i.test(storageQualified[0]) ? "TB" : "GB";
-      values["custom.storage"] = `${storageQualified[1]} ${unit}`;
-    } else if (tbMatch) {
-      values["custom.storage"] = `${tbMatch[1]} TB`;
+    // CPU: use ItScope "cpu" / "prozessor" feature, fallback to regex
+    if (f.cpu || f.prozessor) {
+      values["custom.cpu"] = f.cpu || f.prozessor;
+    } else {
+      const cpuMatch = text.match(/(?:Intel\s+Core\s+(?:Ultra\s+)?\w[\w-]*(?:\s+\w[\w-]*)?|AMD\s+Ryzen\s+\d\s+\w+|Apple\s+M\d\w*(?:\s+(?:Pro|Max|Ultra))?|Intel\s+(?:Celeron|Pentium|Core\s+i\d)[\w\s-]*?\d{4}\w*)/i);
+      if (cpuMatch) values["custom.cpu"] = cpuMatch[0].trim();
     }
 
-    // Fallback: find all GB values and assign by size (smaller = RAM, larger = storage)
-    if (!values["custom.ram"] || !values["custom.storage"]) {
-      const allGB = [...text.matchAll(/(\d+)\s*GB/gi)].map(m => parseInt(m[1]));
-      const unique = [...new Set(allGB)].sort((a, b) => a - b);
-      if (unique.length >= 2 && !values["custom.ram"] && !values["custom.storage"]) {
-        values["custom.ram"] = `${unique[0]} GB`;
-        values["custom.storage"] = `${unique[unique.length - 1]} GB`;
-      } else if (!values["custom.ram"] && unique.length >= 1) {
-        const ram = unique.find(v => v <= 64);
-        if (ram) values["custom.ram"] = `${ram} GB`;
-      } else if (!values["custom.storage"] && unique.length >= 1) {
-        const storage = unique.find(v => v >= 128);
-        if (storage) values["custom.storage"] = `${storage} GB`;
+    // RAM: use ItScope "hauptspeicher" feature, fallback to regex
+    if (f.hauptspeicher) {
+      // Extract just the GB number: "16 GB DDR5" -> "16 GB"
+      const ramNum = f.hauptspeicher.match(/(\d+)\s*GB/i);
+      values["custom.ram"] = ramNum ? `${ramNum[1]} GB` : f.hauptspeicher;
+    } else {
+      const ramMatch = text.match(/(\d+)\s*GB\s*(?:DDR\d|RAM|LP?DDR\d)/i) || text.match(/(\d+)\s*GB/i);
+      if (ramMatch) values["custom.ram"] = `${ramMatch[1]} GB`;
+    }
+
+    // Storage: use ItScope "festplatte" feature, fallback to regex
+    if (f.festplatte) {
+      // Extract just the number + unit: "512 GB SSD" -> "512 GB", "1 TB NVMe" -> "1 TB"
+      const storNum = f.festplatte.match(/(\d+)\s*(GB|TB)/i);
+      values["custom.storage"] = storNum ? `${storNum[1]} ${storNum[2].toUpperCase()}` : f.festplatte;
+    } else {
+      const storageMatch = text.match(/(\d+)\s*TB/i) || text.match(/(\d+)\s*(?:GB)\s*(?:SSD|NVMe|M\.2|PCIe|eMMC)/i);
+      if (storageMatch) {
+        const unit = /TB/i.test(storageMatch[0]) ? "TB" : "GB";
+        values["custom.storage"] = `${storageMatch[1]} ${unit}`;
       }
     }
 
-    // Screen size: 14", 15.6", 14 inch, 15,6 Zoll, etc.
-    const screenMatch = text.match(/(\d{2}[.,]\d)\s*["″]|(\d{2}[.,]\d)\s*(?:inch|Zoll|zoll)|(\d{2})\s*["″]|(\d{2})\s*(?:inch|Zoll|zoll)/i);
-    if (screenMatch) {
-      const size = (screenMatch[1] || screenMatch[2] || screenMatch[3] || screenMatch[4]).replace(",", ".");
-      values["custom.screensize"] = `${size}"`;
+    // Screen size: use ItScope feature or regex
+    if (f.bildschirmdiagonale || f.displaygroesse || f.display) {
+      const sizeNum = (f.bildschirmdiagonale || f.displaygroesse || f.display).match(/(\d{2}[.,]?\d?)/);
+      if (sizeNum) values["custom.screensize"] = `${sizeNum[1].replace(",", ".")}"`;
+    } else {
+      const screenMatch = text.match(/(\d{2}[.,]\d)\s*["″]|(\d{2}[.,]\d)\s*(?:inch|Zoll|zoll)|(\d{2})\s*["″]|(\d{2})\s*(?:inch|Zoll|zoll)/i);
+      if (screenMatch) {
+        const size = (screenMatch[1] || screenMatch[2] || screenMatch[3] || screenMatch[4]).replace(",", ".");
+        values["custom.screensize"] = `${size}"`;
+      }
     }
 
-    // GPU: NVIDIA GeForce RTX 4060, Intel Iris Xe, AMD Radeon, etc.
-    const gpuMatch = text.match(/(?:NVIDIA\s+)?GeForce\s+\w+\s*\w*\s*\w*|Intel\s+(?:Iris\s+Xe|UHD)\s*\w*|AMD\s+Radeon\s+\w+\s*\w*/i);
-    if (gpuMatch) values["custom.gpu"] = gpuMatch[0].trim();
-
-    // Resolution: 1920x1080, 2560x1600, FHD, WUXGA, etc.
-    const resMatch = text.match(/(\d{3,4})\s*[xX×]\s*(\d{3,4})/);
-    if (resMatch) {
-      values["custom.screenresolution"] = `${resMatch[1]}x${resMatch[2]}`;
+    // GPU: use ItScope feature or regex
+    if (f.grafikkarte || f.gpu || f.grafik) {
+      values["custom.gpu"] = f.grafikkarte || f.gpu || f.grafik;
     } else {
-      const resName = text.match(/\b(FHD|Full\s*HD|WUXGA|QHD|WQHD|4K|UHD|OLED|IPS)\b/i);
-      if (resName) values["custom.screenresolution"] = resName[0].toUpperCase();
+      const gpuMatch = text.match(/(?:NVIDIA\s+)?GeForce\s+\w+\s*\w*\s*\w*|Intel\s+(?:Iris\s+Xe|UHD)\s*\w*|AMD\s+Radeon\s+\w+\s*\w*/i);
+      if (gpuMatch) values["custom.gpu"] = gpuMatch[0].trim();
+    }
+
+    // Resolution: use ItScope feature or regex
+    if (f.displayaufloesung || f.aufloesung || f.resolution) {
+      values["custom.screenresolution"] = f.displayaufloesung || f.aufloesung || f.resolution;
+    } else {
+      const resMatch = text.match(/(\d{3,4})\s*[xX×]\s*(\d{3,4})/);
+      if (resMatch) {
+        values["custom.screenresolution"] = `${resMatch[1]}x${resMatch[2]}`;
+      } else {
+        const resName = text.match(/\b(FHD|Full\s*HD|WUXGA|QHD|WQHD|4K|UHD|OLED|IPS)\b/i);
+        if (resName) values["custom.screenresolution"] = resName[0].toUpperCase();
+      }
     }
   }
 
@@ -232,6 +242,7 @@ interface ItScopeProduct {
   bestStock: number;
   aggregatedStock: number;
   offers: ItScopeOffer[];
+  features: Record<string, string>;
 }
 
 function ProjectIdCell({ value, onSave }: { value: string; onSave: (val: string) => void }) {
