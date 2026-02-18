@@ -55,6 +55,118 @@ const PRODUCT_TYPE_METAFIELDS: Record<ProductType, MetafieldConfig[]> = {
   ],
 };
 
+// Auto-detect metafield values from ItScope product data
+function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<string, string> {
+  const text = `${product.name} ${product.shortDescription}`;
+  const values: Record<string, string> = {};
+
+  if (type === "Laptop") {
+    values["custom.brand"] = product.manufacturer || "";
+
+    // CPU: Intel Core i7-1365U, AMD Ryzen 7 7840U, Apple M3, etc.
+    const cpuMatch = text.match(/(?:Intel\s+Core\s+(?:Ultra\s+)?\w[\w-]*(?:\s+\w[\w-]*)?|AMD\s+Ryzen\s+\d\s+\w+|Apple\s+M\d\w*(?:\s+(?:Pro|Max|Ultra))?|Intel\s+(?:Celeron|Pentium|Core\s+i\d)[\w\s-]*?\d{4}\w*)/i);
+    if (cpuMatch) values["custom.cpu"] = cpuMatch[0].trim();
+
+    // RAM: 16GB, 32 GB DDR5, 8GB RAM, etc.
+    const ramMatch = text.match(/(\d+)\s*GB\s*(?:DDR\d|RAM|LP?DDR\d)/i) || text.match(/(\d+)\s*GB(?=\s)/i);
+    if (ramMatch) {
+      const ddrMatch = text.match(/DDR\d|LPDDR\d/i);
+      values["custom.ram"] = `${ramMatch[1]} GB${ddrMatch ? ` ${ddrMatch[0].toUpperCase()}` : ""}`;
+    }
+
+    // Storage: 512GB SSD, 1TB NVMe, 256 GB SSD, etc.
+    const storageMatch = text.match(/(\d+)\s*(?:GB|TB)\s*(?:SSD|NVMe|M\.2|PCIe|eMMC)/i) || text.match(/(?:SSD|NVMe)\s*(\d+)\s*(?:GB|TB)/i);
+    if (storageMatch) values["custom.storage"] = storageMatch[0].trim();
+
+    // Screen size: 14", 15.6", 14 inch, 15,6 Zoll, etc.
+    const screenMatch = text.match(/(\d{2}[.,]\d)\s*["″]|(\d{2}[.,]\d)\s*(?:inch|Zoll|zoll)|(\d{2})\s*["″]|(\d{2})\s*(?:inch|Zoll|zoll)/i);
+    if (screenMatch) {
+      const size = (screenMatch[1] || screenMatch[2] || screenMatch[3] || screenMatch[4]).replace(",", ".");
+      values["custom.screensize"] = `${size}"`;
+    }
+
+    // GPU: NVIDIA GeForce RTX 4060, Intel Iris Xe, AMD Radeon, etc.
+    const gpuMatch = text.match(/(?:NVIDIA\s+)?GeForce\s+\w+\s*\w*\s*\w*|Intel\s+(?:Iris\s+Xe|UHD)\s*\w*|AMD\s+Radeon\s+\w+\s*\w*/i);
+    if (gpuMatch) values["custom.gpu"] = gpuMatch[0].trim();
+
+    // Resolution: 1920x1080, 2560x1600, FHD, WUXGA, etc.
+    const resMatch = text.match(/(\d{3,4})\s*[xX×]\s*(\d{3,4})/);
+    if (resMatch) {
+      values["custom.screenresolution"] = `${resMatch[1]}x${resMatch[2]}`;
+    } else {
+      const resName = text.match(/\b(FHD|Full\s*HD|WUXGA|QHD|WQHD|4K|UHD|OLED|IPS)\b/i);
+      if (resName) values["custom.screenresolution"] = resName[0].toUpperCase();
+    }
+  }
+
+  if (type === "Warranty") {
+    values["custom.brand"] = product.manufacturer || "";
+
+    // Duration: 3 Jahre, 5 Years, 36 Monate, 3Y, etc.
+    const durationMatch = text.match(/(\d+)\s*(?:Jahre?|Years?|ans?)\b/i) || text.match(/(\d+)\s*(?:Monate?|Months?)\b/i) || text.match(/(\d+)Y\b/);
+    if (durationMatch) {
+      const num = parseInt(durationMatch[1]);
+      const isMonths = /monat|month/i.test(durationMatch[0]);
+      values["custom.warranty_duration"] = isMonths ? `${num} Months` : `${num} Years`;
+    }
+
+    // Type: On-Site, Vor-Ort, Carry-in, Mail-in, etc.
+    const typeMatch = text.match(/\b(On-?Site|Vor-?Ort|Carry-?in|Mail-?in|Bring-?in|Pick-?up|Return|Depot)\b/i);
+    if (typeMatch) values["custom.warranty_type"] = typeMatch[0];
+
+    // Coverage: Accidental Damage, Premier Support, etc.
+    const coverageMatch = text.match(/\b(Accidental\s*Damage\s*(?:Protection)?|ADP|Premier\s*Support|Keep\s*Your\s*Drive|Battery\s*Replacement|Sealed\s*Battery|International\s*Warranty)\b/i);
+    if (coverageMatch) values["custom.coverage"] = coverageMatch[0];
+  }
+
+  if (type === "Accessory") {
+    values["custom.brand"] = product.manufacturer || "";
+
+    // Addon type
+    const typePatterns: [RegExp, string][] = [
+      [/\b(?:Mouse|Maus)\b/i, "Mouse"],
+      [/\b(?:Keyboard|Tastatur)\b/i, "Keyboard"],
+      [/\b(?:Backpack|Rucksack)\b/i, "Backpack"],
+      [/\b(?:Laptop\s*(?:Bag|Tasche)|Notebook\s*(?:Bag|Tasche)|Sleeve|Case)\b/i, "Laptop Bag"],
+      [/\b(?:Docking\s*Station|Dock|Thunderbolt\s*Dock)\b/i, "Docking Station"],
+      [/\b(?:Monitor|Display|Bildschirm)\b/i, "Monitor"],
+      [/\b(?:Headset|Kopfhörer)\b/i, "Headset"],
+      [/\b(?:Webcam|Kamera)\b/i, "Webcam"],
+      [/\b(?:Charger|Netzteil|Power\s*Adapter)\b/i, "Charger"],
+      [/\b(?:USB[\s-]*Hub)\b/i, "USB Hub"],
+      [/\b(?:Stylus|Pen|Stift)\b/i, "Stylus"],
+    ];
+    for (const [pattern, label] of typePatterns) {
+      if (pattern.test(text)) { values["custom.addon_type"] = label; break; }
+    }
+
+    // Compatibility: USB-C, USB-A, Bluetooth, etc.
+    const connPatterns: string[] = [];
+    if (/\bUSB[\s-]*C\b/i.test(text)) connPatterns.push("USB-C");
+    if (/\bUSB[\s-]*A\b/i.test(text)) connPatterns.push("USB-A");
+    if (/\bBluetooth\b/i.test(text)) connPatterns.push("Bluetooth");
+    if (/\bWireless|Kabellos|2\.4\s*GHz\b/i.test(text)) connPatterns.push("Wireless");
+    if (/\bThunderbolt\b/i.test(text)) connPatterns.push("Thunderbolt");
+    if (connPatterns.length > 0) values["custom.compatibility"] = connPatterns.join(", ");
+
+    // Color
+    const colorPatterns: [RegExp, string][] = [
+      [/\b(?:Black|Schwarz)\b/i, "Black"],
+      [/\b(?:Silver|Silber)\b/i, "Silver"],
+      [/\b(?:White|Weiß|Weiss)\b/i, "White"],
+      [/\b(?:Grey|Gray|Grau)\b/i, "Grey"],
+      [/\b(?:Blue|Blau)\b/i, "Blue"],
+      [/\b(?:Red|Rot)\b/i, "Red"],
+      [/\b(?:Pink|Rosa)\b/i, "Pink"],
+    ];
+    for (const [pattern, label] of colorPatterns) {
+      if (pattern.test(text)) { values["custom.color"] = label; break; }
+    }
+  }
+
+  return values;
+}
+
 interface TrackedProduct {
   id: number;
   itscopeSku: string;
@@ -215,19 +327,11 @@ export default function AppPage() {
     }
   };
 
-  // Auto-fill metafield defaults when product type or search result changes
+  // Auto-fill metafield values from ItScope product data
   useEffect(() => {
     if (!searchResult) return;
-    const config = PRODUCT_TYPE_METAFIELDS[productType];
-    const initial: Record<string, string> = {};
-    for (const field of config) {
-      if (field.autoFill === "manufacturer") {
-        initial[field.key] = searchResult.manufacturer || "";
-      } else {
-        initial[field.key] = metafieldValues[field.key] || "";
-      }
-    }
-    setMetafieldValues(initial);
+    const autoValues = autoFillMetafields(searchResult, productType);
+    setMetafieldValues(autoValues);
   }, [productType, searchResult]);
 
   const handleMetafieldChange = useCallback((key: string, value: string) => {
