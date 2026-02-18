@@ -115,7 +115,7 @@ async function handleOrderCreated(shop: string, order: any) {
       orderId: ownOrderId,
       supplierId: distributorId,
       dropship: isDropship,
-      buyerPartyId: process.env.ITSCOPE_ACCOUNT_ID!,
+      buyerPartyId: process.env.ITSCOPE_CUSTOMER_ID || process.env.ITSCOPE_ACCOUNT_ID!,
       buyerCompany: process.env.COMPANY_NAME || "My Company",
       buyerStreet: process.env.COMPANY_STREET || "",
       buyerZip: process.env.COMPANY_ZIP || "",
@@ -132,7 +132,6 @@ async function handleOrderCreated(shop: string, order: any) {
           }
         : {}),
       lineItems: orderLineItems,
-      remarks: `Shopify Order #${order.order_number}`,
     });
 
     // Log the generated XML for debugging
