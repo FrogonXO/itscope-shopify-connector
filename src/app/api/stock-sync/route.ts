@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
     for (const product of products) {
       try {
         if (!product.itscopeProductId) continue;
+        if (product.productType === "Warranty") continue; // Warranties have no inventory
 
         // Fetch current stock from ItScope
         const offers = await getProductStock(product.itscopeProductId);

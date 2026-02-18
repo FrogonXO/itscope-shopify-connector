@@ -23,7 +23,9 @@ export async function GET(request: NextRequest) {
 // POST - Import a new product from ItScope to Shopify
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { shop, sku, distributorId, distributorName, shippingMode, projectId } = body;
+  const { shop, sku, distributorId, distributorName, shippingMode, projectId, productType, metafields } = body;
+  const validTypes = ["Laptop", "Warranty", "Accessory"];
+  const resolvedType = validTypes.includes(productType) ? productType : "Laptop";
 
   if (!shop || !sku || !distributorId) {
     return NextResponse.json(
@@ -73,6 +75,24 @@ export async function POST(request: NextRequest) {
   const client = await getShopifyClient(shop, session.accessToken!);
 
   try {
+    // Build metafields array for Shopify
+    const shopifyMetafields = metafields
+      ? Object.entries(metafields as Record<string, string>)
+          .filter(([, value]) => value !== "" && value !== null && value !== undefined)
+          .map(([key, value]) => {
+            const [namespace, metafieldKey] = key.split(".");
+            return {
+              namespace,
+              key: metafieldKey,
+              value: String(value),
+              type: "single_line_text_field",
+            };
+          })
+      : [];
+
+    // Map product type to tags
+    const typeTag = resolvedType === "Warranty" ? "warranty" : resolvedType === "Accessory" ? "addon" : "laptop";
+
     // Step 1: Create the product (new API: no variants/images in ProductInput)
     const createProductResponse = await client.request(
       `mutation productCreate($product: ProductCreateInput!) {
@@ -103,9 +123,10 @@ export async function POST(request: NextRequest) {
             title: itscopeProduct.name,
             descriptionHtml: itscopeProduct.longDescription || itscopeProduct.shortDescription || `<p>${itscopeProduct.name}</p>`,
             vendor: itscopeProduct.manufacturer,
-            productType: "IT Product",
-            tags: ["itscope-managed"],
+            productType: resolvedType,
+            tags: ["itscope-managed", typeTag],
             status: "DRAFT",
+            ...(shopifyMetafields.length > 0 ? { metafields: shopifyMetafields } : {}),
           },
         },
       }
@@ -157,7 +178,7 @@ export async function POST(request: NextRequest) {
                 inventoryPolicy: "DENY",
                 inventoryItem: {
                   sku: sku,
-                  tracked: true,
+                  tracked: resolvedType !== "Warranty",
                   cost: costPrice,
                 },
               },
@@ -214,9 +235,9 @@ export async function POST(request: NextRequest) {
 
     const variant = defaultVariant;
 
-    // Step 4: Set initial inventory quantity
+    // Step 4: Set initial inventory quantity (skip for warranties)
     const initialStock = selectedOffer?.stock ?? 0;
-    if (variant?.inventoryItem?.id) {
+    if (resolvedType !== "Warranty" && variant?.inventoryItem?.id) {
       try {
         const locationId = await getLocationId(shop, client);
 
@@ -282,6 +303,7 @@ export async function POST(request: NextRequest) {
         shopifyInventoryItemId: variant?.inventoryItem?.id,
         distributorId,
         distributorName: distributorName || "",
+        productType: resolvedType,
         shippingMode: shippingMode || "warehouse",
         projectId: projectId || null,
         importPrice: selectedOffer?.price || 0,

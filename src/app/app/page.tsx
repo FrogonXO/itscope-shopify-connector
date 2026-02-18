@@ -20,6 +20,41 @@ import {
   Modal,
 } from "@shopify/polaris";
 
+type ProductType = "Laptop" | "Warranty" | "Accessory";
+
+interface MetafieldConfig {
+  key: string;
+  label: string;
+  placeholder: string;
+  autoFill?: "manufacturer";
+}
+
+const PRODUCT_TYPE_METAFIELDS: Record<ProductType, MetafieldConfig[]> = {
+  Laptop: [
+    { key: "custom.brand", label: "Brand", placeholder: "e.g., Lenovo", autoFill: "manufacturer" },
+    { key: "custom.cpu", label: "CPU", placeholder: "e.g., Intel Core i7-1365U" },
+    { key: "custom.ram", label: "RAM", placeholder: "e.g., 16 GB DDR5" },
+    { key: "custom.storage", label: "Storage", placeholder: "e.g., 512 GB SSD" },
+    { key: "custom.screensize", label: "Screen Size", placeholder: "e.g., 14 inch" },
+    { key: "custom.gpu", label: "GPU", placeholder: "e.g., Intel Iris Xe" },
+    { key: "custom.screenresolution", label: "Screen Resolution", placeholder: "e.g., 1920x1200" },
+    { key: "custom.feature_1_title", label: "Feature 1 Title", placeholder: "e.g., Fingerprint Reader" },
+    { key: "custom.feature_1_subtitle", label: "Feature 1 Subtitle", placeholder: "e.g., Built-in for secure login" },
+  ],
+  Warranty: [
+    { key: "custom.brand", label: "Brand", placeholder: "e.g., Lenovo", autoFill: "manufacturer" },
+    { key: "custom.warranty_duration", label: "Warranty Duration", placeholder: "e.g., 3 Years" },
+    { key: "custom.warranty_type", label: "Warranty Type", placeholder: "e.g., On-site, Carry-in" },
+    { key: "custom.coverage", label: "Coverage", placeholder: "e.g., Accidental Damage, Standard" },
+  ],
+  Accessory: [
+    { key: "custom.brand", label: "Brand", placeholder: "e.g., Logitech", autoFill: "manufacturer" },
+    { key: "custom.addon_type", label: "Add-on Type", placeholder: "e.g., Mouse, Backpack, Docking Station" },
+    { key: "custom.compatibility", label: "Compatibility", placeholder: "e.g., Universal, USB-C" },
+    { key: "custom.color", label: "Color", placeholder: "e.g., Black" },
+  ],
+};
+
 interface TrackedProduct {
   id: number;
   itscopeSku: string;
@@ -27,6 +62,7 @@ interface TrackedProduct {
   shopifyProductId: string;
   distributorId: string;
   distributorName: string;
+  productType: string;
   shippingMode: string;
   projectId: string | null;
   importPrice: number | null;
@@ -104,6 +140,8 @@ export default function AppPage() {
   const [selectedDistributor, setSelectedDistributor] = useState("");
   const [shippingMode, setShippingMode] = useState("warehouse");
   const [projectId, setProjectId] = useState("");
+  const [productType, setProductType] = useState<ProductType>("Laptop");
+  const [metafieldValues, setMetafieldValues] = useState<Record<string, string>>({});
   const [trackedProducts, setTrackedProducts] = useState<TrackedProduct[]>([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -177,6 +215,25 @@ export default function AppPage() {
     }
   };
 
+  // Auto-fill metafield defaults when product type or search result changes
+  useEffect(() => {
+    if (!searchResult) return;
+    const config = PRODUCT_TYPE_METAFIELDS[productType];
+    const initial: Record<string, string> = {};
+    for (const field of config) {
+      if (field.autoFill === "manufacturer") {
+        initial[field.key] = searchResult.manufacturer || "";
+      } else {
+        initial[field.key] = metafieldValues[field.key] || "";
+      }
+    }
+    setMetafieldValues(initial);
+  }, [productType, searchResult]);
+
+  const handleMetafieldChange = useCallback((key: string, value: string) => {
+    setMetafieldValues((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
   const handleSearch = useCallback(async () => {
     if (!skuInput.trim()) return;
 
@@ -184,6 +241,8 @@ export default function AppPage() {
     setError("");
     setSearchResult(null);
     setSelectedDistributor("");
+    setProductType("Laptop");
+    setMetafieldValues({});
 
     try {
       const res = await fetch(
@@ -227,8 +286,10 @@ export default function AppPage() {
           sku: searchResult.manufacturerSku,
           distributorId: selectedDistributor,
           distributorName: selectedOffer?.distributorName || "",
-          shippingMode,
+          shippingMode: productType === "Warranty" ? "warehouse" : shippingMode,
           projectId: projectId.trim() || undefined,
+          productType,
+          metafields: metafieldValues,
         }),
       });
 
@@ -243,13 +304,15 @@ export default function AppPage() {
       setSearchResult(null);
       setSkuInput("");
       setProjectId("");
+      setProductType("Laptop");
+      setMetafieldValues({});
       loadTrackedProducts();
     } catch (e: any) {
       setError(e.message || "Import failed");
     } finally {
       setImporting(false);
     }
-  }, [searchResult, selectedDistributor, shippingMode, projectId, shop]);
+  }, [searchResult, selectedDistributor, shippingMode, projectId, shop, productType, metafieldValues]);
 
   const handleDelete = useCallback(
     async (id: number) => {
@@ -303,6 +366,13 @@ export default function AppPage() {
 
   const rows = trackedProducts.map((p) => [
     p.itscopeSku,
+    p.productType === "Warranty" ? (
+      <Badge tone="attention">Warranty</Badge>
+    ) : p.productType === "Accessory" ? (
+      <Badge tone="info">Accessory</Badge>
+    ) : (
+      <Badge>Laptop</Badge>
+    ),
     p.distributorName || p.distributorId,
     p.shippingMode === "dropship" ? (
       <Badge tone="info">Dropship</Badge>
@@ -440,35 +510,66 @@ export default function AppPage() {
                             onChange={setSelectedDistributor}
                           />
 
-                          <BlockStack gap="200">
+                          <Select
+                            label="Product Type"
+                            options={[
+                              { label: "Laptop", value: "Laptop" },
+                              { label: "Warranty", value: "Warranty" },
+                              { label: "Accessory (Add-on)", value: "Accessory" },
+                            ]}
+                            value={productType}
+                            onChange={(val) => setProductType(val as ProductType)}
+                          />
+
+                          <BlockStack gap="300">
                             <Text as="p" variant="bodySm" fontWeight="semibold">
-                              Shipping Mode
+                              Product Details
                             </Text>
-                            <InlineStack gap="400">
-                              <RadioButton
-                                label="Ship to Warehouse"
-                                checked={shippingMode === "warehouse"}
-                                id="warehouse"
-                                name="shippingMode"
-                                onChange={() => setShippingMode("warehouse")}
+                            {PRODUCT_TYPE_METAFIELDS[productType].map((field) => (
+                              <TextField
+                                key={field.key}
+                                label={field.label}
+                                value={metafieldValues[field.key] || ""}
+                                onChange={(val) => handleMetafieldChange(field.key, val)}
+                                placeholder={field.placeholder}
+                                autoComplete="off"
                               />
-                              <RadioButton
-                                label="Dropshipping"
-                                checked={shippingMode === "dropship"}
-                                id="dropship"
-                                name="shippingMode"
-                                onChange={() => setShippingMode("dropship")}
-                              />
-                            </InlineStack>
+                            ))}
                           </BlockStack>
 
-                          <TextField
-                            label="Project-ID (optional)"
-                            value={projectId}
-                            onChange={setProjectId}
-                            placeholder="ItScope project ID for special pricing"
-                            autoComplete="off"
-                          />
+                          {productType !== "Warranty" && (
+                            <>
+                              <BlockStack gap="200">
+                                <Text as="p" variant="bodySm" fontWeight="semibold">
+                                  Shipping Mode
+                                </Text>
+                                <InlineStack gap="400">
+                                  <RadioButton
+                                    label="Ship to Warehouse"
+                                    checked={shippingMode === "warehouse"}
+                                    id="warehouse"
+                                    name="shippingMode"
+                                    onChange={() => setShippingMode("warehouse")}
+                                  />
+                                  <RadioButton
+                                    label="Dropshipping"
+                                    checked={shippingMode === "dropship"}
+                                    id="dropship"
+                                    name="shippingMode"
+                                    onChange={() => setShippingMode("dropship")}
+                                  />
+                                </InlineStack>
+                              </BlockStack>
+
+                              <TextField
+                                label="Project-ID (optional)"
+                                value={projectId}
+                                onChange={setProjectId}
+                                placeholder="ItScope project ID for special pricing"
+                                autoComplete="off"
+                              />
+                            </>
+                          )}
 
                           <Button
                             variant="primary"
@@ -511,6 +612,7 @@ export default function AppPage() {
                       "text",
                       "text",
                       "text",
+                      "text",
                       "numeric",
                       "numeric",
                       "text",
@@ -518,6 +620,7 @@ export default function AppPage() {
                     ]}
                     headings={[
                       "SKU",
+                      "Type",
                       "Distributor",
                       "Shipping",
                       "Project-ID",
