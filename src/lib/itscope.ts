@@ -302,7 +302,8 @@ export function buildOrderXml(params: OrderParams): string {
       <ns2:ORDER_UNIT>C62</ns2:ORDER_UNIT>${item.unitPrice !== undefined ? `
       <PRODUCT_PRICE_FIX>
         <ns2:PRICE_AMOUNT>${item.unitPrice.toFixed(2)}</ns2:PRICE_AMOUNT>
-      </PRODUCT_PRICE_FIX>` : ""}${item.projectId ? `
+      </PRODUCT_PRICE_FIX>
+      <PRICE_LINE_AMOUNT>${(item.unitPrice * item.quantity).toFixed(2)}</PRICE_LINE_AMOUNT>` : ""}${item.projectId ? `
       <SOURCING_INFO>
         <AGREEMENT>
           <ns2:AGREEMENT_ID>${escapeXml(item.projectId)}</ns2:AGREEMENT_ID>
