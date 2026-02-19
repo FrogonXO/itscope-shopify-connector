@@ -291,10 +291,7 @@ export function buildOrderXml(params: OrderParams): string {
     .map(
       (item, idx) => `
     <ORDER_ITEM>
-      <LINE_ITEM_ID>${idx + 1}</LINE_ITEM_ID>${item.productType && params.customerParty ? `
-      <CUSTOMER_ORDER_REFERENCE>
-        <CUSTOMER_IDREF type="buyer_specific">${escapeXml(customerPartyId)}</CUSTOMER_IDREF>
-      </CUSTOMER_ORDER_REFERENCE>` : ""}
+      <LINE_ITEM_ID>${idx + 1}</LINE_ITEM_ID>
       <PRODUCT_ID>
         <ns2:SUPPLIER_PID type="supplier_specific">${escapeXml(item.supplierPid)}</ns2:SUPPLIER_PID>
         <ns2:INTERNATIONAL_PID type="itscope">${escapeXml(item.itscopeProductId)}</ns2:INTERNATIONAL_PID>${item.productType ? `
@@ -310,7 +307,10 @@ export function buildOrderXml(params: OrderParams): string {
         <AGREEMENT>
           <ns2:AGREEMENT_ID>${escapeXml(item.projectId)}</ns2:AGREEMENT_ID>
         </AGREEMENT>
-      </SOURCING_INFO>` : ""}
+      </SOURCING_INFO>` : ""}${item.productType && params.customerParty ? `
+      <CUSTOMER_ORDER_REFERENCE>
+        <CUSTOMER_IDREF type="buyer_specific">${escapeXml(customerPartyId)}</CUSTOMER_IDREF>
+      </CUSTOMER_ORDER_REFERENCE>` : ""}
     </ORDER_ITEM>`
     )
     .join("\n");
