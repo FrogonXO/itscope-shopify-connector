@@ -294,9 +294,9 @@ export function buildOrderXml(params: OrderParams): string {
       <LINE_ITEM_ID>${idx + 1}</LINE_ITEM_ID>
       <PRODUCT_ID>
         <ns2:SUPPLIER_PID type="supplier_specific">${escapeXml(item.supplierPid)}</ns2:SUPPLIER_PID>
-        <ns2:INTERNATIONAL_PID type="itscope">${escapeXml(item.itscopeProductId)}</ns2:INTERNATIONAL_PID>${item.productType ? `
+        <ns2:INTERNATIONAL_PID type="itscope">${escapeXml(item.itscopeProductId)}</ns2:INTERNATIONAL_PID>
+        <ns2:DESCRIPTION_SHORT>${escapeXml(item.description)}</ns2:DESCRIPTION_SHORT>${item.productType ? `
         <ns2:PRODUCT_TYPE>${escapeXml(item.productType)}</ns2:PRODUCT_TYPE>` : ""}
-        <ns2:DESCRIPTION_SHORT>${escapeXml(item.description)}</ns2:DESCRIPTION_SHORT>
       </PRODUCT_ID>
       <QUANTITY>${item.quantity}</QUANTITY>
       <ns2:ORDER_UNIT>C62</ns2:ORDER_UNIT>${item.unitPrice !== undefined ? `
