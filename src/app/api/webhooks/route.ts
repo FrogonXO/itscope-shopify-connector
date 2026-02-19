@@ -98,11 +98,29 @@ async function handleOrderCreated(shop: string, order: any) {
           description: lineItem.title || tp.itscopeSku,
           projectId: tp.projectId || undefined,
           unitPrice: tp.lastPrice || undefined,
+          productType: tp.productType === "Warranty" ? "service" as const : undefined,
         };
       })
       .filter(Boolean) as any[];
 
     if (orderLineItems.length === 0) continue;
+
+    // Check if this order contains warranty/service items that need licensee info
+    const hasServiceItems = orderLineItems.some((li: any) => li.productType);
+
+    // Extract end customer (licensee) info from Shopify order for warranty items
+    const billingAddress = order.billing_address || shippingAddress;
+    const customerParty = hasServiceItems ? {
+      company: billingAddress.company || `${billingAddress.first_name || ""} ${billingAddress.last_name || ""}`.trim(),
+      firstName: billingAddress.first_name || order.customer?.first_name || "",
+      lastName: billingAddress.last_name || order.customer?.last_name || "",
+      email: order.email || order.customer?.email || "",
+      phone: billingAddress.phone || order.customer?.phone || order.phone || "",
+      street: `${billingAddress.address1 || ""}${billingAddress.address2 ? " " + billingAddress.address2 : ""}`,
+      zip: billingAddress.zip || "",
+      city: billingAddress.city || "",
+      country: billingAddress.country_code || "DE",
+    } : undefined;
 
     // Generate a unique order ID (max 18 chars)
     // Append distributor suffix for multi-distributor orders
@@ -131,6 +149,7 @@ async function handleOrderCreated(shop: string, order: any) {
             deliveryCountry: shippingAddress.country_code || "DE",
           }
         : {}),
+      customerParty,
       lineItems: orderLineItems,
     });
 

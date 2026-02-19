@@ -197,6 +197,19 @@ interface OrderLineItem {
   description: string;
   projectId?: string;
   unitPrice?: number;
+  productType?: "service" | "license" | "esd"; // For warranties/licenses/ESD — triggers CUSTOMER_ORDER_REFERENCE
+}
+
+interface CustomerParty {
+  company: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  street: string;
+  zip: string;
+  city: string;
+  country: string; // ISO country code e.g. "DE"
 }
 
 interface OrderParams {
@@ -215,6 +228,7 @@ interface OrderParams {
   deliveryZip?: string;
   deliveryCity?: string;
   deliveryCountry?: string;
+  customerParty?: CustomerParty; // End customer (licensee) — required for warranty/license/ESD items
   lineItems: OrderLineItem[];
   remarks?: string;
 }
@@ -247,14 +261,44 @@ export function buildOrderXml(params: OrderParams): string {
         </ADDRESS>
       </PARTY>`;
 
+  // Customer (licensee) party — required for warranty/license/ESD line items
+  const hasLicenseeItems = params.lineItems.some((item) => item.productType);
+  const customerPartyId = `${params.buyerPartyId}_CUSTOMER`;
+  const customerPartyXml = hasLicenseeItems && params.customerParty
+    ? `<PARTY>
+        <ns2:PARTY_ID type="buyer_specific">${escapeXml(customerPartyId)}</ns2:PARTY_ID>
+        <PARTY_ROLE>customer</PARTY_ROLE>
+        <ADDRESS>
+          <ns2:NAME>${escapeXml(params.customerParty.company || `${params.customerParty.firstName} ${params.customerParty.lastName}`)}</ns2:NAME>
+          <CONTACT_DETAILS>
+            <ns2:CONTACT_NAME>${escapeXml(params.customerParty.lastName)}</ns2:CONTACT_NAME>
+            <ns2:FIRST_NAME>${escapeXml(params.customerParty.firstName)}</ns2:FIRST_NAME>
+            <ns2:PHONE>${escapeXml(params.customerParty.phone)}</ns2:PHONE>
+            <ns2:EMAILS>
+              <ns2:EMAIL>${escapeXml(params.customerParty.email)}</ns2:EMAIL>
+            </ns2:EMAILS>
+          </CONTACT_DETAILS>
+          <ns2:STREET>${escapeXml(params.customerParty.street)}</ns2:STREET>
+          <ns2:ZIP>${escapeXml(params.customerParty.zip)}</ns2:ZIP>
+          <ns2:CITY>${escapeXml(params.customerParty.city)}</ns2:CITY>
+          <ns2:COUNTRY>${escapeXml(params.customerParty.country)}</ns2:COUNTRY>
+          <ns2:COUNTRY_CODED>${escapeXml(params.customerParty.country)}</ns2:COUNTRY_CODED>
+        </ADDRESS>
+      </PARTY>`
+    : "";
+
   const orderItems = params.lineItems
     .map(
       (item, idx) => `
     <ORDER_ITEM>
-      <LINE_ITEM_ID>${idx + 1}</LINE_ITEM_ID>
+      <LINE_ITEM_ID>${idx + 1}</LINE_ITEM_ID>${item.productType && params.customerParty ? `
+      <CUSTOMER_ORDER_REFERENCE>
+        <CUSTOMER_IDREF type="buyer_specific">${escapeXml(customerPartyId)}</CUSTOMER_IDREF>
+      </CUSTOMER_ORDER_REFERENCE>` : ""}
       <PRODUCT_ID>
         <ns2:SUPPLIER_PID type="supplier_specific">${escapeXml(item.supplierPid)}</ns2:SUPPLIER_PID>
-        <ns2:INTERNATIONAL_PID type="itscope">${escapeXml(item.itscopeProductId)}</ns2:INTERNATIONAL_PID>
+        <ns2:INTERNATIONAL_PID type="itscope">${escapeXml(item.itscopeProductId)}</ns2:INTERNATIONAL_PID>${item.productType ? `
+        <ns2:PRODUCT_TYPE>${escapeXml(item.productType)}</ns2:PRODUCT_TYPE>` : ""}
         <ns2:DESCRIPTION_SHORT>${escapeXml(item.description)}</ns2:DESCRIPTION_SHORT>
       </PRODUCT_ID>
       <QUANTITY>${item.quantity}</QUANTITY>
@@ -298,6 +342,7 @@ export function buildOrderXml(params: OrderParams): string {
           </ADDRESS>
         </PARTY>
         ${deliveryParty}
+        ${customerPartyXml}
       </PARTIES>
       <ORDER_PARTIES_REFERENCE>
         <ns2:BUYER_IDREF type="buyer_specific">${escapeXml(params.buyerPartyId)}</ns2:BUYER_IDREF>
