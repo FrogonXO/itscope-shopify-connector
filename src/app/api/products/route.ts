@@ -217,8 +217,13 @@ export async function POST(request: NextRequest) {
     // The default variant is auto-created; update it with SKU/price/barcode
     const defaultVariant = shopifyProduct?.variants?.edges?.[0]?.node;
 
+    // Use project price if a matching project exists, otherwise distributor price
+    const projectMatch = projectId && selectedOffer
+      ? selectedOffer.projects.find((p) => p.manufacturerProjectId === projectId)
+      : null;
+    const buyPrice = projectMatch?.price ?? selectedOffer?.price ?? 0;
+
     if (defaultVariant && productId) {
-      const buyPrice = selectedOffer?.price || 0;
       const sellPrice = (buyPrice * 1.10).toFixed(2); // 10% margin
       const costPrice = buyPrice.toFixed(2);
 
@@ -375,8 +380,8 @@ export async function POST(request: NextRequest) {
       productType: resolvedType,
       shippingMode: shippingMode || "warehouse",
       projectId: projectId || null,
-      importPrice: selectedOffer?.price || 0,
-      lastPrice: selectedOffer?.price,
+      importPrice: buyPrice,
+      lastPrice: buyPrice,
       lastStock: selectedOffer?.stock,
       lastStockSync: new Date(),
     };

@@ -42,6 +42,15 @@ export interface ItScopeProduct {
   features: Record<string, string>; // All product attributes (e.g. hauptspeicher, festplatte, cpu, etc.)
 }
 
+export interface ItScopeProject {
+  manufacturerProjectId: string;
+  supplierProjectId: string;
+  projectName: string;
+  price: number;
+  remainingQuantity: number;
+  validTo?: string;
+}
+
 export interface ItScopeOffer {
   supplierItemId: string;
   distributorId: string;
@@ -53,6 +62,7 @@ export interface ItScopeOffer {
   stockStatusText: string;
   condition: string;
   available: boolean;
+  projects: ItScopeProject[];
 }
 
 export async function searchProductBySku(
@@ -101,6 +111,23 @@ function parseProduct(product: any, sku: string): ItScopeProduct {
       const condition = item.conditionName || "";
       const price = parseFloat(item.price || "0");
 
+      // Parse project pricing data
+      const projects: ItScopeProject[] = [];
+      const rawProjects = item.projects?.project || item.project;
+      if (rawProjects) {
+        const projectList = Array.isArray(rawProjects) ? rawProjects : [rawProjects];
+        for (const proj of projectList) {
+          projects.push({
+            manufacturerProjectId: String(proj.manufacturerProjectId || ""),
+            supplierProjectId: String(proj.supplierProjectId || ""),
+            projectName: proj.projectName || "",
+            price: parseFloat(proj.price || "0"),
+            remainingQuantity: parseInt(proj.remainingQuantity || "0", 10),
+            validTo: proj.validTo || undefined,
+          });
+        }
+      }
+
       offers.push({
         supplierItemId: String(item.id || ""),
         distributorId: String(item.supplierId || ""),
@@ -112,6 +139,7 @@ function parseProduct(product: any, sku: string): ItScopeProduct {
         stockStatusText: item.stockStatusText || "",
         condition,
         available: (item.stockStatus === 1 || item.stockStatus === 3) && price > 0,
+        projects,
       });
     }
   }
@@ -174,18 +202,36 @@ export async function getProductStock(
   if (!supplierItems) return [];
 
   const items = Array.isArray(supplierItems) ? supplierItems : [supplierItems];
-  return items.map((item: any) => ({
-    supplierItemId: String(item.id || ""),
-    distributorId: String(item.supplierId || ""),
-    distributorName: item.supplierName || "",
-    supplierSKU: String(item.supplierSKU || ""),
-    price: parseFloat(item.price || "0"),
-    priceCalc: parseFloat(item.priceCalc || "0"),
-    stock: parseInt(item.stock || "0", 10),
-    stockStatusText: item.stockStatusText || "",
-    condition: item.conditionName || "",
-    available: (item.stockStatus === 1 || item.stockStatus === 3) && parseFloat(item.price || "0") > 0,
-  }));
+  return items.map((item: any) => {
+    const projects: ItScopeProject[] = [];
+    const rawProjects = item.projects?.project || item.project;
+    if (rawProjects) {
+      const projectList = Array.isArray(rawProjects) ? rawProjects : [rawProjects];
+      for (const proj of projectList) {
+        projects.push({
+          manufacturerProjectId: String(proj.manufacturerProjectId || ""),
+          supplierProjectId: String(proj.supplierProjectId || ""),
+          projectName: proj.projectName || "",
+          price: parseFloat(proj.price || "0"),
+          remainingQuantity: parseInt(proj.remainingQuantity || "0", 10),
+          validTo: proj.validTo || undefined,
+        });
+      }
+    }
+    return {
+      supplierItemId: String(item.id || ""),
+      distributorId: String(item.supplierId || ""),
+      distributorName: item.supplierName || "",
+      supplierSKU: String(item.supplierSKU || ""),
+      price: parseFloat(item.price || "0"),
+      priceCalc: parseFloat(item.priceCalc || "0"),
+      stock: parseInt(item.stock || "0", 10),
+      stockStatusText: item.stockStatusText || "",
+      condition: item.conditionName || "",
+      available: (item.stockStatus === 1 || item.stockStatus === 3) && parseFloat(item.price || "0") > 0,
+      projects,
+    };
+  });
 }
 
 // ─── Order Sending ───────────────────────────────────────────────

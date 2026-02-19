@@ -58,7 +58,11 @@ export async function GET(request: NextRequest) {
         }
 
         const newStock = selectedOffer.stock;
-        const newPrice = selectedOffer.price;
+        // Use project price if the product has a project ID with a matching project offer
+        const projectMatch = product.projectId
+          ? selectedOffer.projects.find((p) => p.manufacturerProjectId === product.projectId)
+          : null;
+        const newPrice = projectMatch?.price ?? selectedOffer.price;
 
         // Update Shopify inventory if we have the inventory item ID
         if (product.shopifyInventoryItemId) {
