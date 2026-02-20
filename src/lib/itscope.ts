@@ -429,7 +429,7 @@ export function buildOrderXml(params: OrderParams): string {
 <ORDER xmlns="http://www.opentrans.org/XMLSchema/2.1" xmlns:ns2="http://www.bmecat.org/bmecat/2005" version="2.1" type="standard">
   <ORDER_HEADER>
     <CONTROL_INFO>
-      <GENERATOR_INFO>ItScope-Shopify-Connector</GENERATOR_INFO>
+      <GENERATOR_INFO>itscope</GENERATOR_INFO>
     </CONTROL_INFO>
     <ORDER_INFO>
       <ORDER_ID>${escapeXml(params.orderId)}</ORDER_ID>
