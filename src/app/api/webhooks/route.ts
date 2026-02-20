@@ -80,6 +80,19 @@ async function handleOrderCreated(shop: string, order: any) {
   const shippingAddress = order.shipping_address || order.billing_address || {};
 
   for (const [distributorId, products] of byDistributor) {
+    try {
+    // Skip if we already processed this order+distributor (duplicate webhook protection)
+    const existingOrder = await prisma.order.findFirst({
+      where: {
+        shopifyOrderId: `gid://shopify/Order/${order.id}`,
+        distributorId,
+      },
+    });
+    if (existingOrder) {
+      console.log(`Order ${order.id} already processed for distributor ${distributorId}, skipping`);
+      continue;
+    }
+
     // Check if any product in this distributor group uses dropshipping
     const isDropship = products.some((p) => p.shippingMode === "dropship");
 
@@ -218,6 +231,9 @@ async function handleOrderCreated(shop: string, order: any) {
         shopifyOrderGid,
         `ItScope order ${ownOrderId} failed to send to ${distributorLabel}. Error: ${result.error?.substring(0, 200) || "Unknown error"}`
       );
+    }
+    } catch (distributorError) {
+      console.error(`Error processing distributor ${distributorId} for order ${order.id}:`, distributorError);
     }
   }
 }
