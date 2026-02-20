@@ -312,7 +312,7 @@ export function buildOrderXml(params: OrderParams): string {
 
   const deliveryParty = params.dropship
     ? `<PARTY>
-        <ns2:PARTY_ID type="delivery">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
+        <ns2:PARTY_ID type="buyer_specific">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
         <PARTY_ROLE>delivery</PARTY_ROLE>
         <ADDRESS>
           <ns2:NAME>${escapeXml(params.deliveryCompany || params.buyerCompany)}</ns2:NAME>
@@ -326,7 +326,7 @@ export function buildOrderXml(params: OrderParams): string {
         </ADDRESS>
       </PARTY>`
     : `<PARTY>
-        <ns2:PARTY_ID type="delivery">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
+        <ns2:PARTY_ID type="buyer_specific">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
         <PARTY_ROLE>delivery</PARTY_ROLE>
         <ADDRESS>
           <ns2:NAME>${escapeXml(params.buyerCompany)}</ns2:NAME>${deliveryContactDetails}
