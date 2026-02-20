@@ -288,8 +288,12 @@ interface OrderParams {
 }
 
 export function buildOrderXml(params: OrderParams): string {
-  // Strip country prefix from ZIP for delivery (e.g. "A-1090" → "1090")
+  // Strip country prefix from ZIP (e.g. "A-1090" → "1090")
   const stripZipPrefix = (zip: string) => zip.replace(/^[A-Z]+-/, "");
+
+  // Map country code to full name (COUNTRY uses full name, COUNTRY_CODED uses code)
+  const countryNames: Record<string, string> = { AT: "Österreich", DE: "Deutschland", CH: "Schweiz" };
+  const countryName = (code: string) => countryNames[code] || code;
 
   // Build delivery CONTACT_DETAILS if we have contact info
   const deliveryContactName = params.dropship
@@ -312,7 +316,7 @@ export function buildOrderXml(params: OrderParams): string {
 
   const deliveryParty = params.dropship
     ? `<PARTY>
-        <ns2:PARTY_ID type="buyer_specific">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
+        <ns2:PARTY_ID type="supplier_specific">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
         <PARTY_ROLE>delivery</PARTY_ROLE>
         <ADDRESS>
           <ns2:NAME>${escapeXml(params.deliveryCompany || params.buyerCompany)}</ns2:NAME>
@@ -320,22 +324,42 @@ export function buildOrderXml(params: OrderParams): string {
           <ns2:STREET>${escapeXml(params.deliveryStreet || params.buyerStreet)}</ns2:STREET>
           <ns2:ZIP>${escapeXml(stripZipPrefix(params.deliveryZip || params.buyerZip))}</ns2:ZIP>
           <ns2:CITY>${escapeXml(params.deliveryCity || params.buyerCity)}</ns2:CITY>
-          <ns2:COUNTRY>${escapeXml(params.deliveryCountry || params.buyerCountry)}</ns2:COUNTRY>
+          <ns2:COUNTRY>${escapeXml(countryName(params.deliveryCountry || params.buyerCountry))}</ns2:COUNTRY>
           <ns2:COUNTRY_CODED>${escapeXml(params.deliveryCountry || params.buyerCountry)}</ns2:COUNTRY_CODED>${deliveryContactPhone ? `
-          <ns2:PHONE type="office">${escapeXml(deliveryContactPhone)}</ns2:PHONE>` : ""}
+          <ns2:PHONE>${escapeXml(deliveryContactPhone)}</ns2:PHONE>` : ""}
         </ADDRESS>
       </PARTY>`
     : `<PARTY>
-        <ns2:PARTY_ID type="buyer_specific">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
+        <ns2:PARTY_ID type="supplier_specific">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
         <PARTY_ROLE>delivery</PARTY_ROLE>
         <ADDRESS>
           <ns2:NAME>${escapeXml(params.buyerCompany)}</ns2:NAME>${deliveryContactDetails}
           <ns2:STREET>${escapeXml(params.buyerStreet)}</ns2:STREET>
           <ns2:ZIP>${escapeXml(stripZipPrefix(params.buyerZip))}</ns2:ZIP>
           <ns2:CITY>${escapeXml(params.buyerCity)}</ns2:CITY>
-          <ns2:COUNTRY>${escapeXml(params.buyerCountry)}</ns2:COUNTRY>
+          <ns2:COUNTRY>${escapeXml(countryName(params.buyerCountry))}</ns2:COUNTRY>
           <ns2:COUNTRY_CODED>${escapeXml(params.buyerCountry)}</ns2:COUNTRY_CODED>${deliveryContactPhone ? `
-          <ns2:PHONE type="office">${escapeXml(deliveryContactPhone)}</ns2:PHONE>` : ""}
+          <ns2:PHONE>${escapeXml(deliveryContactPhone)}</ns2:PHONE>` : ""}
+        </ADDRESS>
+      </PARTY>`;
+
+  // Invoice recipient party (same as buyer, matches old working format)
+  const invoiceRecipientParty = `<PARTY>
+        <ns2:PARTY_ID type="supplier_specific">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
+        <PARTY_ROLE>invoice_recipient</PARTY_ROLE>
+        <ADDRESS>
+          <ns2:NAME>${escapeXml(params.buyerCompany)}</ns2:NAME>${params.buyerContactName || params.buyerContactEmail ? `
+          <CONTACT_DETAILS>
+            <ns2:CONTACT_NAME>${escapeXml(params.buyerContactName || params.buyerCompany)}</ns2:CONTACT_NAME>${params.buyerContactEmail ? `
+            <ns2:EMAILS>
+              <ns2:EMAIL>${escapeXml(params.buyerContactEmail)}</ns2:EMAIL>
+            </ns2:EMAILS>` : ""}
+          </CONTACT_DETAILS>` : ""}
+          <ns2:STREET>${escapeXml(params.buyerStreet)}</ns2:STREET>
+          <ns2:ZIP>${escapeXml(stripZipPrefix(params.buyerZip))}</ns2:ZIP>
+          <ns2:CITY>${escapeXml(params.buyerCity)}</ns2:CITY>
+          <ns2:COUNTRY>${escapeXml(countryName(params.buyerCountry))}</ns2:COUNTRY>
+          <ns2:COUNTRY_CODED>${escapeXml(params.buyerCountry)}</ns2:COUNTRY_CODED>
         </ADDRESS>
       </PARTY>`;
 
@@ -369,12 +393,12 @@ export function buildOrderXml(params: OrderParams): string {
     .map(
       (item, idx) => `
     <ORDER_ITEM>
-      <LINE_ITEM_ID>${idx + 1}</LINE_ITEM_ID>
+      <LINE_ITEM_ID>${String(idx + 1).padStart(5, "0")}</LINE_ITEM_ID>
       <PRODUCT_ID>
         <ns2:SUPPLIER_PID type="supplier_specific">${escapeXml(item.supplierPid)}</ns2:SUPPLIER_PID>
         <ns2:INTERNATIONAL_PID type="itscope">${escapeXml(item.itscopeProductId)}</ns2:INTERNATIONAL_PID>
-        <ns2:DESCRIPTION_SHORT>${escapeXml(item.description)}</ns2:DESCRIPTION_SHORT>${item.productType ? `
-        <ns2:PRODUCT_TYPE>${escapeXml(item.productType)}</ns2:PRODUCT_TYPE>` : ""}
+        <ns2:DESCRIPTION_SHORT>${escapeXml(item.description)}</ns2:DESCRIPTION_SHORT>
+        <ns2:PRODUCT_TYPE>${item.productType ? escapeXml(item.productType) : "physical"}</ns2:PRODUCT_TYPE>
       </PRODUCT_ID>
       <QUANTITY>${item.quantity}</QUANTITY>
       <ns2:ORDER_UNIT>C62</ns2:ORDER_UNIT>${item.unitPrice !== undefined ? `
@@ -383,7 +407,7 @@ export function buildOrderXml(params: OrderParams): string {
       </PRODUCT_PRICE_FIX>
       <PRICE_LINE_AMOUNT>${(item.unitPrice * item.quantity).toFixed(2)}</PRICE_LINE_AMOUNT>` : ""}${item.projectId ? `
       <SOURCING_INFO>
-        <AGREEMENT>
+        <AGREEMENT type="supplier">
           <ns2:AGREEMENT_ID>${escapeXml(item.projectId)}</ns2:AGREEMENT_ID>
         </AGREEMENT>
       </SOURCING_INFO>` : ""}${item.productType && params.customerParty ? `
@@ -394,6 +418,11 @@ export function buildOrderXml(params: OrderParams): string {
     )
     .join("\n");
 
+  // Calculate total amount for ORDER_SUMMARY
+  const totalAmount = params.lineItems
+    .filter((item) => item.unitPrice !== undefined)
+    .reduce((sum, item) => sum + (item.unitPrice! * item.quantity), 0);
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ORDER xmlns="http://www.opentrans.org/XMLSchema/2.1" xmlns:ns2="http://www.bmecat.org/bmecat/2005" version="2.1" type="standard">
   <ORDER_HEADER>
@@ -402,14 +431,11 @@ export function buildOrderXml(params: OrderParams): string {
     </CONTROL_INFO>
     <ORDER_INFO>
       <ORDER_ID>${escapeXml(params.orderId)}</ORDER_ID>
-      <ORDER_DATE>${new Date().toISOString()}</ORDER_DATE>
+      <ORDER_DATE>${new Date().toISOString().replace(/\.\d{3}Z$/, "")}</ORDER_DATE>
+      <ns2:LANGUAGE default="true">deu</ns2:LANGUAGE>
       <PARTIES>
         <PARTY>
-          <ns2:PARTY_ID type="supplier_specific">${escapeXml(params.supplierId)}</ns2:PARTY_ID>
-          <PARTY_ROLE>supplier</PARTY_ROLE>
-        </PARTY>
-        <PARTY>
-          <ns2:PARTY_ID type="buyer_specific">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
+          <ns2:PARTY_ID type="supplier_specific">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
           <PARTY_ROLE>buyer</PARTY_ROLE>
           <ADDRESS>
             <ns2:NAME>${escapeXml(params.buyerCompany)}</ns2:NAME>${params.buyerContactName || params.buyerContactEmail ? `
@@ -420,15 +446,16 @@ export function buildOrderXml(params: OrderParams): string {
               </ns2:EMAILS>` : ""}
             </CONTACT_DETAILS>` : ""}
             <ns2:STREET>${escapeXml(params.buyerStreet)}</ns2:STREET>
-            <ns2:ZIP>${escapeXml(params.buyerZip)}</ns2:ZIP>
+            <ns2:ZIP>${escapeXml(stripZipPrefix(params.buyerZip))}</ns2:ZIP>
             <ns2:CITY>${escapeXml(params.buyerCity)}</ns2:CITY>
-            <ns2:COUNTRY>${escapeXml(params.buyerCountry)}</ns2:COUNTRY>
+            <ns2:COUNTRY>${escapeXml(countryName(params.buyerCountry))}</ns2:COUNTRY>
             <ns2:COUNTRY_CODED>${escapeXml(params.buyerCountry)}</ns2:COUNTRY_CODED>${params.buyerPhone ? `
-            <ns2:PHONE type="office">${escapeXml(params.buyerPhone)}</ns2:PHONE>` : ""}${params.buyerFax ? `
-            <ns2:FAX type="office">${escapeXml(params.buyerFax)}</ns2:FAX>` : ""}${params.buyerUrl ? `
+            <ns2:PHONE>${escapeXml(params.buyerPhone)}</ns2:PHONE>` : ""}${params.buyerFax ? `
+            <ns2:FAX>${escapeXml(params.buyerFax)}</ns2:FAX>` : ""}${params.buyerUrl ? `
             <ns2:URL>${escapeXml(params.buyerUrl)}</ns2:URL>` : ""}
           </ADDRESS>
         </PARTY>
+        ${invoiceRecipientParty}
         ${deliveryParty}
         ${customerPartyXml}
       </PARTIES>
@@ -436,9 +463,11 @@ export function buildOrderXml(params: OrderParams): string {
         <ORDER_ID>${escapeXml(params.orderId)}</ORDER_ID>
       </CUSTOMER_ORDER_REFERENCE>
       <ORDER_PARTIES_REFERENCE>
-        <ns2:BUYER_IDREF type="buyer_specific">${escapeXml(params.buyerPartyId)}</ns2:BUYER_IDREF>
+        <ns2:BUYER_IDREF type="supplier_specific">${escapeXml(params.buyerPartyId)}</ns2:BUYER_IDREF>
         <ns2:SUPPLIER_IDREF type="supplier_specific">${escapeXml(params.supplierId)}</ns2:SUPPLIER_IDREF>
+        <INVOICE_RECIPIENT_IDREF type="supplier_specific">${escapeXml(params.buyerPartyId)}</INVOICE_RECIPIENT_IDREF>
       </ORDER_PARTIES_REFERENCE>
+      <ns2:CURRENCY>EUR</ns2:CURRENCY>
       <PARTIAL_SHIPMENT_ALLOWED>true</PARTIAL_SHIPMENT_ALLOWED>
       ${params.remarks ? `<REMARKS type="general">${escapeXml(params.remarks)}</REMARKS>` : ""}
       ${params.dropship ? "<HEADER_UDX><UDX.DROPSHIPMENT>true</UDX.DROPSHIPMENT></HEADER_UDX>" : ""}
@@ -449,6 +478,7 @@ export function buildOrderXml(params: OrderParams): string {
   </ORDER_ITEM_LIST>
   <ORDER_SUMMARY>
     <TOTAL_ITEM_NUM>${params.lineItems.length}</TOTAL_ITEM_NUM>
+    <TOTAL_AMOUNT>${totalAmount.toFixed(2)}</TOTAL_AMOUNT>
   </ORDER_SUMMARY>
 </ORDER>`;
 }
