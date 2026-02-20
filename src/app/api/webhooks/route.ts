@@ -129,6 +129,21 @@ async function handleOrderCreated(shop: string, order: any) {
       ? `${baseOrderId}-${distributorId.slice(-3)}`.substring(0, 18)
       : baseOrderId.substring(0, 18);
 
+    // Apple-specific remarks: check if any line item in this group is from Apple
+    const getVendor = (tp: typeof products[0]) => {
+      const li = lineItems.find((li: any) => `gid://shopify/Product/${li.product_id}` === tp.shopifyProductId);
+      return (li?.vendor || "").toLowerCase();
+    };
+    const hasAppleProduct = products.some((p) => getVendor(p) === "apple");
+    const hasAppleCare = hasAppleProduct && products.some(
+      (p) => p.productType === "Warranty" && getVendor(p) === "apple"
+    );
+    const remarks = hasAppleCare
+      ? "Universität Wien + AppleCare+"
+      : hasAppleProduct
+        ? "Universität Wien"
+        : undefined;
+
     const orderXml = buildOrderXml({
       orderId: ownOrderId,
       supplierId: distributorId,
@@ -151,6 +166,7 @@ async function handleOrderCreated(shop: string, order: any) {
         : {}),
       customerParty,
       lineItems: orderLineItems,
+      remarks,
     });
 
     // Log the generated XML for debugging
