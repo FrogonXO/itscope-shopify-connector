@@ -215,6 +215,9 @@ async function handleOrderUpdated(shop: string, order: any) {
             deliveryZip: shippingAddress.zip || "",
             deliveryCity: shippingAddress.city || "",
             deliveryCountry: shippingAddress.country_code || "DE",
+            deliveryContactName: `${shippingAddress.first_name || ""} ${shippingAddress.last_name || ""}`.trim() || shippingAddress.company || "",
+            deliveryContactEmail: order.email || order.customer?.email || "",
+            deliveryPhone: shippingAddress.phone || order.customer?.phone || "",
           }
         : {}),
       customerParty,
