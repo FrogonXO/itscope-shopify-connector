@@ -268,6 +268,11 @@ interface OrderParams {
   buyerZip: string;
   buyerCity: string;
   buyerCountry: string;
+  buyerPhone?: string;
+  buyerFax?: string;
+  buyerUrl?: string;
+  buyerContactName?: string;
+  buyerContactEmail?: string;
   deliveryCompany?: string;
   deliveryName?: string;
   deliveryStreet?: string;
@@ -275,6 +280,7 @@ interface OrderParams {
   deliveryCity?: string;
   deliveryCountry?: string;
   customerParty?: CustomerParty; // End customer (licensee) — required for warranty/license/ESD items
+  customerOrderId?: string; // Endkundenbestellreferenz (e.g. Shopify order number)
   lineItems: OrderLineItem[];
   remarks?: string;
 }
@@ -380,24 +386,36 @@ export function buildOrderXml(params: OrderParams): string {
           <ns2:PARTY_ID type="buyer_specific">${escapeXml(params.buyerPartyId)}</ns2:PARTY_ID>
           <PARTY_ROLE>buyer</PARTY_ROLE>
           <ADDRESS>
-            <ns2:NAME>${escapeXml(params.buyerCompany)}</ns2:NAME>
+            <ns2:NAME>${escapeXml(params.buyerCompany)}</ns2:NAME>${params.buyerContactName ? `
+            <CONTACT_DETAILS>
+              <ns2:CONTACT_NAME>${escapeXml(params.buyerContactName)}</ns2:CONTACT_NAME>${params.buyerContactEmail ? `
+              <ns2:EMAILS>
+                <ns2:EMAIL>${escapeXml(params.buyerContactEmail)}</ns2:EMAIL>
+              </ns2:EMAILS>` : ""}
+            </CONTACT_DETAILS>` : ""}
             <ns2:STREET>${escapeXml(params.buyerStreet)}</ns2:STREET>
             <ns2:ZIP>${escapeXml(params.buyerZip)}</ns2:ZIP>
             <ns2:CITY>${escapeXml(params.buyerCity)}</ns2:CITY>
             <ns2:COUNTRY>${escapeXml(params.buyerCountry)}</ns2:COUNTRY>
-            <ns2:COUNTRY_CODED>${escapeXml(params.buyerCountry)}</ns2:COUNTRY_CODED>
+            <ns2:COUNTRY_CODED>${escapeXml(params.buyerCountry)}</ns2:COUNTRY_CODED>${params.buyerPhone ? `
+            <ns2:PHONE type="office">${escapeXml(params.buyerPhone)}</ns2:PHONE>` : ""}${params.buyerFax ? `
+            <ns2:FAX type="office">${escapeXml(params.buyerFax)}</ns2:FAX>` : ""}${params.buyerUrl ? `
+            <ns2:URL>${escapeXml(params.buyerUrl)}</ns2:URL>` : ""}
           </ADDRESS>
         </PARTY>
         ${deliveryParty}
         ${customerPartyXml}
-      </PARTIES>
+      </PARTIES>${params.customerOrderId ? `
+      <CUSTOMER_ORDER_REFERENCE>
+        <ORDER_ID>${escapeXml(params.customerOrderId)}</ORDER_ID>
+      </CUSTOMER_ORDER_REFERENCE>` : ""}
       <ORDER_PARTIES_REFERENCE>
         <ns2:BUYER_IDREF type="buyer_specific">${escapeXml(params.buyerPartyId)}</ns2:BUYER_IDREF>
         <ns2:SUPPLIER_IDREF type="supplier_specific">${escapeXml(params.supplierId)}</ns2:SUPPLIER_IDREF>
       </ORDER_PARTIES_REFERENCE>
       <PARTIAL_SHIPMENT_ALLOWED>true</PARTIAL_SHIPMENT_ALLOWED>
-      ${params.dropship ? "<HEADER_UDX><UDX.DROPSHIPMENT>true</UDX.DROPSHIPMENT></HEADER_UDX>" : ""}
       ${params.remarks ? `<REMARKS type="general">${escapeXml(params.remarks)}</REMARKS>` : ""}
+      ${params.dropship ? "<HEADER_UDX><UDX.DROPSHIPMENT>true</UDX.DROPSHIPMENT></HEADER_UDX>" : ""}
     </ORDER_INFO>
   </ORDER_HEADER>
   <ORDER_ITEM_LIST>

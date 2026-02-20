@@ -154,6 +154,11 @@ async function handleOrderCreated(shop: string, order: any) {
       buyerZip: process.env.COMPANY_ZIP || "",
       buyerCity: process.env.COMPANY_CITY || "",
       buyerCountry: process.env.COMPANY_COUNTRY || "DE",
+      buyerPhone: process.env.COMPANY_PHONE || undefined,
+      buyerFax: process.env.COMPANY_FAX || undefined,
+      buyerUrl: process.env.COMPANY_URL || undefined,
+      buyerContactName: process.env.COMPANY_CONTACT_NAME || undefined,
+      buyerContactEmail: process.env.COMPANY_CONTACT_EMAIL || undefined,
       ...(isDropship
         ? {
             deliveryCompany: `${shippingAddress.first_name || ""} ${shippingAddress.last_name || ""}`.trim() || shippingAddress.company,
@@ -165,6 +170,7 @@ async function handleOrderCreated(shop: string, order: any) {
           }
         : {}),
       customerParty,
+      customerOrderId: String(order.order_number),
       lineItems: orderLineItems,
       remarks,
     });
