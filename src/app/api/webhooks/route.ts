@@ -31,7 +31,12 @@ export async function POST(request: NextRequest) {
   try {
     switch (topic) {
       case "orders/create":
-        await handleOrderCreated(shop, body);
+        // Don't process immediately — a Shopify Flow puts the order on hold first
+        // for student verification. We wait for orders/updated to detect hold release.
+        console.log(`Order ${body.id} created from ${shop}, waiting for hold release`);
+        break;
+      case "orders/updated":
+        await handleOrderUpdated(shop, body);
         break;
       case "app/uninstalled":
         await handleAppUninstalled(shop);
@@ -47,8 +52,16 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-async function handleOrderCreated(shop: string, order: any) {
-  console.log(`New order ${order.id} from ${shop}`);
+async function handleOrderUpdated(shop: string, order: any) {
+  console.log(`Order ${order.id} updated from ${shop}`);
+
+  // Check if fulfillment holds have been released via Shopify GraphQL
+  // If any fulfillment order is still ON_HOLD, skip — the order hasn't been verified yet
+  const hasHold = await checkFulfillmentHolds(shop, order.id);
+  if (hasHold) {
+    console.log(`Order ${order.id} still on hold, skipping`);
+    return;
+  }
 
   // Check which line items are ItScope-managed products
   const lineItems = order.line_items || [];
@@ -247,6 +260,38 @@ async function handleOrderCreated(shop: string, order: any) {
     } catch (distributorError) {
       console.error(`Error processing distributor ${distributorId} for order ${order.id}:`, distributorError);
     }
+  }
+}
+
+async function checkFulfillmentHolds(shop: string, orderId: number): Promise<boolean> {
+  try {
+    const session = await getOfflineSession(shop);
+    if (!session) return true; // If no session, assume on hold (safe default)
+
+    const client = await getShopifyClient(shop, session.accessToken!);
+    const result = await client.request(
+      `query fulfillmentHolds($orderId: ID!) {
+        order(id: $orderId) {
+          fulfillmentOrders(first: 10) {
+            nodes {
+              status
+            }
+          }
+        }
+      }`,
+      {
+        variables: {
+          orderId: `gid://shopify/Order/${orderId}`,
+        },
+      }
+    );
+
+    const fulfillmentOrders = (result as any).data?.order?.fulfillmentOrders?.nodes || [];
+    // If any fulfillment order is ON_HOLD, the order hasn't been released yet
+    return fulfillmentOrders.some((fo: any) => fo.status === "ON_HOLD");
+  } catch (error) {
+    console.error("Failed to check fulfillment holds:", error);
+    return true; // On error, assume on hold (safe default — don't send premature orders)
   }
 }
 

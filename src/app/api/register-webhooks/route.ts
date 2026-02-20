@@ -57,6 +57,40 @@ export async function GET(request: NextRequest) {
       result: (ordersResult as any).data?.webhookSubscriptionCreate,
     });
 
+    // Register ORDERS_UPDATED webhook (triggers ItScope order after hold release)
+    const ordersUpdatedResult = await client.request(
+      `mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $webhookSubscription: WebhookSubscriptionInput!) {
+        webhookSubscriptionCreate(topic: $topic, webhookSubscription: $webhookSubscription) {
+          webhookSubscription {
+            id
+            topic
+            endpoint {
+              ... on WebhookHttpEndpoint {
+                callbackUrl
+              }
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }`,
+      {
+        variables: {
+          topic: "ORDERS_UPDATED",
+          webhookSubscription: {
+            callbackUrl: `${appUrl}/api/webhooks`,
+            format: "JSON",
+          },
+        },
+      }
+    );
+    results.push({
+      topic: "ORDERS_UPDATED",
+      result: (ordersUpdatedResult as any).data?.webhookSubscriptionCreate,
+    });
+
     // Register APP_UNINSTALLED webhook
     const uninstallResult = await client.request(
       `mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $webhookSubscription: WebhookSubscriptionInput!) {

@@ -34,6 +34,10 @@ function getShopifyInstance() {
         deliveryMethod: DeliveryMethod.Http,
         callbackUrl: "/api/webhooks",
       },
+      ORDERS_UPDATED: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/api/webhooks",
+      },
       APP_UNINSTALLED: {
         deliveryMethod: DeliveryMethod.Http,
         callbackUrl: "/api/webhooks",
