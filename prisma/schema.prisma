@@ -71,7 +71,7 @@ model Order {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  @@unique([shop, shopifyOrderId])
+  @@unique([shop, shopifyOrderId, distributorId])
   @@index([status])
   @@index([shop])
 }
