@@ -207,6 +207,7 @@ async function handleOrderUpdated(shop: string, order: any) {
       buyerUrl: process.env.COMPANY_URL || undefined,
       buyerContactName: process.env.COMPANY_CONTACT_NAME || undefined,
       buyerContactEmail: process.env.COMPANY_CONTACT_EMAIL || undefined,
+      buyerVatId: process.env.COMPANY_VAT_ID || undefined,
       ...(isDropship
         ? {
             deliveryCompany: `${shippingAddress.first_name || ""} ${shippingAddress.last_name || ""}`.trim() || shippingAddress.company,

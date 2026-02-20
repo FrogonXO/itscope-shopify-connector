@@ -273,6 +273,7 @@ interface OrderParams {
   buyerUrl?: string;
   buyerContactName?: string;
   buyerContactEmail?: string;
+  buyerVatId?: string;
   deliveryCompany?: string;
   deliveryName?: string;
   deliveryStreet?: string;
@@ -359,7 +360,8 @@ export function buildOrderXml(params: OrderParams): string {
           <ns2:ZIP>${escapeXml(stripZipPrefix(params.buyerZip))}</ns2:ZIP>
           <ns2:CITY>${escapeXml(params.buyerCity)}</ns2:CITY>
           <ns2:COUNTRY>${escapeXml(countryName(params.buyerCountry))}</ns2:COUNTRY>
-          <ns2:COUNTRY_CODED>${escapeXml(params.buyerCountry)}</ns2:COUNTRY_CODED>
+          <ns2:COUNTRY_CODED>${escapeXml(params.buyerCountry)}</ns2:COUNTRY_CODED>${params.buyerVatId ? `
+          <ns2:VAT_ID>${escapeXml(params.buyerVatId)}</ns2:VAT_ID>` : ""}
         </ADDRESS>
       </PARTY>`;
 
