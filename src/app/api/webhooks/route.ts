@@ -80,6 +80,7 @@ async function handleOrderCreated(shop: string, order: any) {
   // Get shipping address from the order
   const shippingAddress = order.shipping_address || order.billing_address || {};
 
+  let distributorIndex = 0;
   for (const [distributorId, products] of byDistributor) {
     try {
     // Skip if we already processed this order+distributor (duplicate webhook protection)
@@ -137,11 +138,12 @@ async function handleOrderCreated(shop: string, order: any) {
     } : undefined;
 
     // Generate a unique order ID (max 18 chars)
-    // Append distributor suffix for multi-distributor orders
+    // First distributor: SH1048, second: SH1048/1, third: SH1048/2, etc.
     const baseOrderId = `SH${order.order_number}`;
-    const ownOrderId = byDistributor.size > 1
-      ? `${baseOrderId}-${distributorId.slice(-3)}`.substring(0, 18)
+    const ownOrderId = distributorIndex > 0
+      ? `${baseOrderId}/${distributorIndex}`.substring(0, 18)
       : baseOrderId.substring(0, 18);
+    distributorIndex++;
 
     // Apple-specific remarks: check if any line item in this group is from Apple
     const getVendor = (tp: typeof products[0]) => {
@@ -184,7 +186,6 @@ async function handleOrderCreated(shop: string, order: any) {
           }
         : {}),
       customerParty,
-      customerOrderId: String(order.order_number),
       lineItems: orderLineItems,
       remarks,
     });
