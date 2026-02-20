@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { isAllowedDistributor } from "@/lib/distributors";
 import {
   Page,
   Layout,
@@ -414,8 +415,9 @@ export default function AppPage() {
       }
 
       setSearchResult(data);
-      if (data.offers?.length > 0) {
-        setSelectedDistributor(data.offers[0].distributorId);
+      const allowedOffers = (data.offers || []).filter((o: any) => o.available && isAllowedDistributor(o.distributorName));
+      if (allowedOffers.length > 0) {
+        setSelectedDistributor(allowedOffers[0].distributorId);
       }
     } catch (e: any) {
       setError(e.message || "Search failed");
@@ -655,12 +657,12 @@ export default function AppPage() {
                         {searchResult.manufacturer} — EAN: {searchResult.ean || "N/A"}
                       </Text>
 
-                      {searchResult.offers.length > 0 ? (
+                      {searchResult.offers.some((o) => o.available && isAllowedDistributor(o.distributorName)) ? (
                         <>
                           <Select
                             label="Select Distributor"
                             options={searchResult.offers
-                              .filter((o) => o.available)
+                              .filter((o) => o.available && isAllowedDistributor(o.distributorName))
                               .map((o) => ({
                                 label: `${o.distributorName} — €${o.price.toFixed(2)} — ${o.stockStatusText} (${o.condition})`,
                                 value: o.distributorId,

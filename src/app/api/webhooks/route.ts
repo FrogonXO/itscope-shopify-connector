@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
+import { getCustomerId } from "@/lib/distributors";
 import { buildOrderXml, sendOrder } from "@/lib/itscope";
 import { getOfflineSession } from "@/lib/session-storage";
 import { getShopifyClient } from "@/lib/shopify";
@@ -161,7 +162,7 @@ async function handleOrderCreated(shop: string, order: any) {
       orderId: ownOrderId,
       supplierId: distributorId,
       dropship: isDropship,
-      buyerPartyId: process.env.ITSCOPE_CUSTOMER_ID || process.env.ITSCOPE_ACCOUNT_ID!,
+      buyerPartyId: getCustomerId(products[0]?.distributorName || "") || process.env.ITSCOPE_CUSTOMER_ID || process.env.ITSCOPE_ACCOUNT_ID!,
       buyerCompany: process.env.COMPANY_NAME || "My Company",
       buyerStreet: process.env.COMPANY_STREET || "",
       buyerZip: process.env.COMPANY_ZIP || "",
