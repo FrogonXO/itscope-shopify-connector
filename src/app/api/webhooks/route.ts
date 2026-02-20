@@ -80,23 +80,47 @@ async function handleOrderCreated(shop: string, order: any) {
   // Get shipping address from the order
   const shippingAddress = order.shipping_address || order.billing_address || {};
 
-  let distributorIndex = 0;
-  for (const [distributorId, products] of byDistributor) {
-    try {
-    // Skip if we already processed this order+distributor (duplicate webhook protection)
-    const existingOrder = await prisma.order.findFirst({
-      where: {
-        shopifyOrderId: `gid://shopify/Order/${order.id}`,
-        distributorId,
-      },
-    });
-    if (existingOrder) {
-      console.log(`Order ${order.id} already processed for distributor ${distributorId}, skipping`);
-      continue;
-    }
+  // Pre-compute deterministic order IDs for each distributor before any processing
+  // This ensures IDs stay stable across webhook retries regardless of skip order
+  const distributorEntries = Array.from(byDistributor.entries());
+  const baseOrderId = `SH${order.order_number}`;
+  const orderIdMap = new Map<string, string>();
+  for (let i = 0; i < distributorEntries.length; i++) {
+    const [distId] = distributorEntries[i];
+    const ownOrderId = i > 0
+      ? `${baseOrderId}/${i}`.substring(0, 18)
+      : baseOrderId.substring(0, 18);
+    orderIdMap.set(distId, ownOrderId);
+  }
 
-    // Check if any product in this distributor group uses dropshipping
+  for (const [distributorId, products] of distributorEntries) {
+    const ownOrderId = orderIdMap.get(distributorId)!;
+    try {
+    // Claim this order slot in the DB with "pending" status BEFORE sending to ItScope.
+    // The unique constraint [shop, shopifyOrderId, distributorId] acts as a lock —
+    // if a concurrent webhook already claimed it, the create will throw and we skip.
     const isDropship = products.some((p) => p.shippingMode === "dropship");
+    let dbOrder;
+    try {
+      dbOrder = await prisma.order.create({
+        data: {
+          shop,
+          shopifyOrderId: `gid://shopify/Order/${order.id}`,
+          shopifyOrderNumber: String(order.order_number),
+          itscopeOwnOrderId: ownOrderId,
+          distributorId,
+          status: "pending",
+          dropship: isDropship,
+        },
+      });
+    } catch (e: any) {
+      // Unique constraint violation = already claimed by another webhook
+      if (e?.code === "P2002") {
+        console.log(`Order ${order.id} already claimed for distributor ${distributorId}, skipping`);
+        continue;
+      }
+      throw e;
+    }
 
     // Build line items for this distributor
     const orderLineItems = products
@@ -118,7 +142,10 @@ async function handleOrderCreated(shop: string, order: any) {
       })
       .filter(Boolean) as any[];
 
-    if (orderLineItems.length === 0) continue;
+    if (orderLineItems.length === 0) {
+      await prisma.order.delete({ where: { id: dbOrder.id } });
+      continue;
+    }
 
     // Check if this order contains warranty/service items that need licensee info
     const hasServiceItems = orderLineItems.some((li: any) => li.productType);
@@ -136,14 +163,6 @@ async function handleOrderCreated(shop: string, order: any) {
       city: billingAddress.city || "",
       country: billingAddress.country_code || "DE",
     } : undefined;
-
-    // Generate a unique order ID (max 18 chars)
-    // First distributor: SH1048, second: SH1048/1, third: SH1048/2, etc.
-    const baseOrderId = `SH${order.order_number}`;
-    const ownOrderId = distributorIndex > 0
-      ? `${baseOrderId}/${distributorIndex}`.substring(0, 18)
-      : baseOrderId.substring(0, 18);
-    distributorIndex++;
 
     // Apple-specific remarks: check if any line item in this group is from Apple
     const getVendor = (tp: typeof products[0]) => {
@@ -190,25 +209,16 @@ async function handleOrderCreated(shop: string, order: any) {
       remarks,
     });
 
-    // Log the generated XML for debugging
-    console.log(`Order XML for ${ownOrderId}:`, orderXml);
-    console.log(`Buyer address: company="${process.env.COMPANY_NAME}", street="${process.env.COMPANY_STREET}", zip="${process.env.COMPANY_ZIP}", city="${process.env.COMPANY_CITY}", country="${process.env.COMPANY_COUNTRY}"`);
-
     // Send order to ItScope
     const result = await sendOrder(distributorId, orderXml);
 
-    // Store order mapping in database
-    await prisma.order.create({
+    // Update the pending DB record with the result
+    await prisma.order.update({
+      where: { id: dbOrder.id },
       data: {
-        shop,
-        shopifyOrderId: `gid://shopify/Order/${order.id}`,
-        shopifyOrderNumber: String(order.order_number),
         itscopeDealId: result.dealId || null,
-        itscopeOwnOrderId: ownOrderId,
-        distributorId,
         status: result.success ? "sent" : "error",
         errorMessage: result.error || null,
-        dropship: isDropship,
       },
     });
 
