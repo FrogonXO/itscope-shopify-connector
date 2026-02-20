@@ -288,6 +288,9 @@ interface OrderParams {
 }
 
 export function buildOrderXml(params: OrderParams): string {
+  // Strip country prefix from ZIP for delivery (e.g. "A-1090" → "1090")
+  const stripZipPrefix = (zip: string) => zip.replace(/^[A-Z]+-/, "");
+
   // Build delivery CONTACT_DETAILS if we have contact info
   const deliveryContactName = params.dropship
     ? params.deliveryContactName
@@ -315,7 +318,7 @@ export function buildOrderXml(params: OrderParams): string {
           <ns2:NAME>${escapeXml(params.deliveryCompany || params.buyerCompany)}</ns2:NAME>
           <ns2:NAME2>${escapeXml(params.deliveryName || "")}</ns2:NAME2>${deliveryContactDetails}
           <ns2:STREET>${escapeXml(params.deliveryStreet || params.buyerStreet)}</ns2:STREET>
-          <ns2:ZIP>${escapeXml(params.deliveryZip || params.buyerZip)}</ns2:ZIP>
+          <ns2:ZIP>${escapeXml(stripZipPrefix(params.deliveryZip || params.buyerZip))}</ns2:ZIP>
           <ns2:CITY>${escapeXml(params.deliveryCity || params.buyerCity)}</ns2:CITY>
           <ns2:COUNTRY>${escapeXml(params.deliveryCountry || params.buyerCountry)}</ns2:COUNTRY>
           <ns2:COUNTRY_CODED>${escapeXml(params.deliveryCountry || params.buyerCountry)}</ns2:COUNTRY_CODED>${deliveryContactPhone ? `
@@ -328,7 +331,7 @@ export function buildOrderXml(params: OrderParams): string {
         <ADDRESS>
           <ns2:NAME>${escapeXml(params.buyerCompany)}</ns2:NAME>${deliveryContactDetails}
           <ns2:STREET>${escapeXml(params.buyerStreet)}</ns2:STREET>
-          <ns2:ZIP>${escapeXml(params.buyerZip)}</ns2:ZIP>
+          <ns2:ZIP>${escapeXml(stripZipPrefix(params.buyerZip))}</ns2:ZIP>
           <ns2:CITY>${escapeXml(params.buyerCity)}</ns2:CITY>
           <ns2:COUNTRY>${escapeXml(params.buyerCountry)}</ns2:COUNTRY>
           <ns2:COUNTRY_CODED>${escapeXml(params.buyerCountry)}</ns2:COUNTRY_CODED>${deliveryContactPhone ? `
