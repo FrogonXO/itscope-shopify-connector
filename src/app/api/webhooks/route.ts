@@ -63,6 +63,15 @@ async function handleOrderUpdated(shop: string, order: any) {
     return;
   }
 
+  // Guard against race condition: orders/updated fires before the Flow puts the order on hold.
+  // If the order was created less than 90 seconds ago and has no hold, the Flow hasn't acted yet.
+  // When the hold is eventually released, orders/updated will fire again and we'll process it then.
+  const orderAge = Date.now() - new Date(order.created_at).getTime();
+  if (orderAge < 90_000) {
+    console.log(`Order ${order.id} is only ${Math.round(orderAge / 1000)}s old with no hold, waiting for Flow to act`);
+    return;
+  }
+
   // Check which line items are ItScope-managed products
   const lineItems = order.line_items || [];
   const shopifyProductIds = lineItems
