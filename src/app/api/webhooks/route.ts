@@ -74,17 +74,17 @@ async function handleOrderUpdated(shop: string, order: any) {
 
   // Check which line items are ItScope-managed products
   const lineItems = order.line_items || [];
-  const shopifyProductIds = lineItems
-    .map((item: any) => String(item.product_id))
-    .filter(Boolean);
+  const shopifyVariantIds = lineItems
+    .map((item: any) => String(item.variant_id))
+    .filter((id: string) => id && id !== "null");
 
-  if (shopifyProductIds.length === 0) return;
+  if (shopifyVariantIds.length === 0) return;
 
-  // Find tracked products that match
+  // Find tracked products that match by variant (handles multi-variant products correctly)
   const trackedProducts = await prisma.trackedProduct.findMany({
     where: {
       shop,
-      shopifyProductId: { in: shopifyProductIds.map((id: string) => `gid://shopify/Product/${id}`) },
+      shopifyVariantId: { in: shopifyVariantIds.map((id: string) => `gid://shopify/ProductVariant/${id}`) },
       active: true,
     },
   });
@@ -149,7 +149,7 @@ async function handleOrderUpdated(shop: string, order: any) {
       .map((tp) => {
         const lineItem = lineItems.find(
           (li: any) =>
-            `gid://shopify/Product/${li.product_id}` === tp.shopifyProductId
+            `gid://shopify/ProductVariant/${li.variant_id}` === tp.shopifyVariantId
         );
         if (!lineItem) return null;
         return {
