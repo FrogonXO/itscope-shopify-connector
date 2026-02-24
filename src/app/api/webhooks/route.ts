@@ -300,6 +300,8 @@ async function checkFulfillmentHolds(shop: string, orderId: number): Promise<boo
     );
 
     const fulfillmentOrders = (result as any).data?.order?.fulfillmentOrders?.nodes || [];
+    const statuses = fulfillmentOrders.map((fo: any) => fo.status);
+    console.log(`Fulfillment hold check for order ${orderId}: statuses=${JSON.stringify(statuses)}`);
     // If any fulfillment order is ON_HOLD, the order hasn't been released yet
     return fulfillmentOrders.some((fo: any) => fo.status === "ON_HOLD");
   } catch (error) {
