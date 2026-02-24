@@ -153,7 +153,7 @@ async function handleOrderUpdated(shop: string, order: any) {
         );
         if (!lineItem) return null;
         return {
-          supplierPid: tp.itscopeSku,
+          supplierPid: tp.distributorSku || tp.itscopeSku,
           itscopeProductId: tp.itscopeProductId || "",
           quantity: lineItem.quantity,
           description: lineItem.title || tp.itscopeSku,

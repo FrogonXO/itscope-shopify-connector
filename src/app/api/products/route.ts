@@ -377,6 +377,7 @@ export async function POST(request: NextRequest) {
       shopifyInventoryItemId: variant?.inventoryItem?.id,
       distributorId,
       distributorName: distributorName || "",
+      distributorSku: selectedOffer?.supplierSKU || null,
       productType: resolvedType,
       shippingMode: shippingMode || "warehouse",
       projectId: projectId || null,

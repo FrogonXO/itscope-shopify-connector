@@ -30,6 +30,7 @@ model TrackedProduct {
   shopifyInventoryItemId String? // For inventory updates
   distributorId       String   // Selected ItScope distributor ID
   distributorName     String?
+  distributorSku      String?  // Distributor's own product number (supplierSKU from ItScope)
   productType         String   @default("Laptop") // "Laptop", "Warranty", "Accessory"
   shippingMode        String   @default("warehouse") // "dropship" or "warehouse"
   projectId           String?  // ItScope project ID for special pricing (AGREEMENT_ID)
