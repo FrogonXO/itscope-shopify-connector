@@ -491,6 +491,29 @@ export default function AppPage() {
     [shop]
   );
 
+  const handleRelink = useCallback(
+    async (id: number) => {
+      try {
+        const res = await fetch("/api/products", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shop, id, relinkShopify: true }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setSuccess(`Product relinked to Shopify (${data.product.shopifyVariantId})`);
+          loadTrackedProducts();
+        } else {
+          setError(data.error || "Relink failed");
+        }
+      } catch (e) {
+        console.error("Relink failed:", e);
+        setError("Relink failed");
+      }
+    },
+    [shop]
+  );
+
   const handleUpdateProjectId = useCallback(
     async (id: number, newProjectId: string) => {
       try {
@@ -561,9 +584,10 @@ export default function AppPage() {
     p.lastStockSync
       ? new Date(p.lastStockSync).toLocaleString()
       : "Never",
-    <Button variant="plain" tone="critical" onClick={() => handleDelete(p.id)}>
-      Remove
-    </Button>,
+    <InlineStack gap="200">
+      <Button size="micro" variant="plain" onClick={() => handleRelink(p.id)}>Relink</Button>
+      <Button size="micro" variant="plain" tone="critical" onClick={() => handleDelete(p.id)}>Remove</Button>
+    </InlineStack>,
   ]);
 
   return (

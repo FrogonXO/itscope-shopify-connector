@@ -400,16 +400,71 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PATCH - Update a tracked product (e.g. projectId, dismiss price alert)
+// PATCH - Update a tracked product (e.g. projectId, dismiss price alert, relink Shopify IDs)
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
-  const { shop, id, projectId, dismissPriceAlert } = body;
+  const { shop, id, projectId, dismissPriceAlert, relinkShopify } = body;
 
   if (!shop || !id) {
     return NextResponse.json(
       { error: "Missing shop or id" },
       { status: 400 }
     );
+  }
+
+  // Relink: look up the actual Shopify product/variant/inventory IDs by SKU
+  if (relinkShopify) {
+    const tracked = await prisma.trackedProduct.findUnique({ where: { id: Number(id) } });
+    if (!tracked) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
+
+    const session = await getOfflineSession(shop);
+    if (!session) {
+      return NextResponse.json({ error: "No Shopify session" }, { status: 401 });
+    }
+
+    const client = await getShopifyClient(shop, session.accessToken!);
+
+    // Search Shopify for a variant with this SKU
+    const searchResult = await client.request(
+      `query findBySku($query: String!) {
+        productVariants(first: 5, query: $query) {
+          edges {
+            node {
+              id
+              sku
+              inventoryItem { id }
+              product { id title }
+            }
+          }
+        }
+      }`,
+      { variables: { query: `sku:${tracked.itscopeSku}` } }
+    );
+
+    const variants = (searchResult as any).data?.productVariants?.edges || [];
+    const match = variants.find((e: any) => e.node.sku === tracked.itscopeSku);
+
+    if (!match) {
+      return NextResponse.json(
+        { error: `No Shopify product found with SKU "${tracked.itscopeSku}"` },
+        { status: 404 }
+      );
+    }
+
+    const node = match.node;
+    const updated = await prisma.trackedProduct.update({
+      where: { id: Number(id) },
+      data: {
+        shopifyProductId: node.product.id,
+        shopifyVariantId: node.id,
+        shopifyInventoryItemId: node.inventoryItem?.id || null,
+      },
+    });
+
+    console.log(`Relinked product ${id}: product=${node.product.id}, variant=${node.id}`);
+    return NextResponse.json({ success: true, product: updated, relinked: true });
   }
 
   const updateData: Record<string, any> = {};
