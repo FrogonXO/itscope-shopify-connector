@@ -78,16 +78,26 @@ async function handleOrderUpdated(shop: string, order: any) {
     .map((item: any) => String(item.variant_id))
     .filter((id: string) => id && id !== "null");
 
-  if (shopifyVariantIds.length === 0) return;
+  console.log(`Order ${order.id} line items: ${lineItems.length}, variant IDs: ${JSON.stringify(shopifyVariantIds)}`);
+
+  if (shopifyVariantIds.length === 0) {
+    console.log(`Order ${order.id} has no variant IDs, skipping`);
+    return;
+  }
 
   // Find tracked products that match by variant (handles multi-variant products correctly)
+  const variantGids = shopifyVariantIds.map((id: string) => `gid://shopify/ProductVariant/${id}`);
+  console.log(`Order ${order.id} looking for variants: ${JSON.stringify(variantGids)}`);
+
   const trackedProducts = await prisma.trackedProduct.findMany({
     where: {
       shop,
-      shopifyVariantId: { in: shopifyVariantIds.map((id: string) => `gid://shopify/ProductVariant/${id}`) },
+      shopifyVariantId: { in: variantGids },
       active: true,
     },
   });
+
+  console.log(`Order ${order.id} matched ${trackedProducts.length} tracked products`);
 
   if (trackedProducts.length === 0) return;
 
