@@ -26,6 +26,7 @@ model TrackedProduct {
   itscopeSku          String   // Manufacturer part number (hstpid)
   itscopeProductId    String?  // ItScope internal product ID
   shopifyProductId    String?  // Shopify product GID
+  shopifyProductTitle String?  // Shopify product title (for grouping variants)
   shopifyVariantId    String?  // Shopify variant GID
   shopifyInventoryItemId String? // For inventory updates
   distributorId       String   // Selected ItScope distributor ID

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { isAllowedDistributor } from "@/lib/distributors";
 import {
   Page,
@@ -9,7 +9,6 @@ import {
   TextField,
   Button,
   Banner,
-  DataTable,
   Badge,
   Select,
   RadioButton,
@@ -18,8 +17,9 @@ import {
   BlockStack,
   InlineStack,
   Box,
-  Modal,
   Tabs,
+  Checkbox,
+  Collapsible,
 } from "@shopify/polaris";
 
 type ProductType = "Laptop" | "Warranty" | "Accessory";
@@ -64,7 +64,6 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
   const values: Record<string, string> = {};
 
   // Build named attributes map from ItScope indexed attribute pairs
-  // e.g. attributetypename3="Hauptspeicher" + attributevalue3="16GB" → attrs["hauptspeicher"] = "16GB"
   const attrs: Record<string, string> = {};
   for (let i = 1; i <= 20; i++) {
     const name = f[`attributetypename${i}`];
@@ -75,7 +74,6 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
   if (type === "Laptop") {
     values["custom.brand"] = product.manufacturer || "";
 
-    // CPU: use ItScope attribute, fallback to regex
     if (attrs["cpu"]) {
       values["custom.cpu"] = attrs["cpu"];
     } else {
@@ -83,7 +81,6 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
       if (cpuMatch) values["custom.cpu"] = cpuMatch[0].trim();
     }
 
-    // RAM: use ItScope "Hauptspeicher" attribute, fallback to regex
     if (attrs["hauptspeicher"]) {
       const ramNum = attrs["hauptspeicher"].match(/(\d+)/);
       values["custom.ram"] = ramNum ? `${ramNum[1]} GB` : attrs["hauptspeicher"];
@@ -91,13 +88,12 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
       const allGB = [...text.matchAll(/(\d+)\s*GB/gi)].map(m => parseInt(m[1]));
       const unique = [...new Set(allGB)].sort((a, b) => a - b);
       if (unique.length >= 2) {
-        values["custom.ram"] = `${unique[0]} GB`; // smaller = RAM
+        values["custom.ram"] = `${unique[0]} GB`;
       } else if (unique.length === 1) {
         values["custom.ram"] = `${unique[0]} GB`;
       }
     }
 
-    // Storage: use ItScope "Festplatte" attribute, fallback to regex
     if (attrs["festplatte"]) {
       const storNum = attrs["festplatte"].match(/(\d+)/);
       const unit = /TB/i.test(attrs["festplatte"]) ? "TB" : "GB";
@@ -110,12 +106,11 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
         const allGB = [...text.matchAll(/(\d+)\s*GB/gi)].map(m => parseInt(m[1]));
         const unique = [...new Set(allGB)].sort((a, b) => a - b);
         if (unique.length >= 2) {
-          values["custom.storage"] = `${unique[unique.length - 1]} GB`; // larger = storage
+          values["custom.storage"] = `${unique[unique.length - 1]} GB`;
         }
       }
     }
 
-    // Screen size: use ItScope "Bilddiagonale (Zoll)" attribute, fallback to regex
     const screenAttr = attrs["bilddiagonale (zoll)"] || attrs["bildschirmdiagonale"] || attrs["bildschirmdiagonale (zoll)"];
     if (screenAttr) {
       const sizeNum = screenAttr.match(/(\d{2}[.,]?\d?)/);
@@ -128,7 +123,6 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
       }
     }
 
-    // GPU: use ItScope attribute or regex
     const gpuAttr = attrs["grafikkarte"] || attrs["gpu"] || attrs["grafik"];
     if (gpuAttr) {
       values["custom.gpu"] = gpuAttr;
@@ -137,14 +131,13 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
       if (gpuMatch) values["custom.gpu"] = gpuMatch[0].trim();
     }
 
-    // Resolution: parse from htmlspecs (has detailed specs beyond the 5 indexed attributes)
     const specs = f.htmlspecs || "";
     const specsResMatch = specs.match(/Aufl.sung[^<]*<\/div><div class="ITSv">([^<]+)/i);
     if (specsResMatch) {
-      const resNum = specsResMatch[1].match(/(\d{3,4})\s*[*xX×]\s*(\d{3,4})/);
+      const resNum = specsResMatch[1].match(/(\d{3,4})\s*[*xX\u00d7]\s*(\d{3,4})/);
       values["custom.screenresolution"] = resNum ? `${resNum[1]}x${resNum[2]}` : specsResMatch[1].trim();
     } else {
-      const resMatch = text.match(/(\d{3,4})\s*[xX×]\s*(\d{3,4})/);
+      const resMatch = text.match(/(\d{3,4})\s*[xX\u00d7]\s*(\d{3,4})/);
       if (resMatch) {
         values["custom.screenresolution"] = `${resMatch[1]}x${resMatch[2]}`;
       } else {
@@ -157,7 +150,6 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
   if (type === "Warranty") {
     values["custom.brand"] = product.manufacturer || "";
 
-    // Duration: 3 Jahre, 5 Years, 36 Monate, 3Y, etc.
     const durationMatch = text.match(/(\d+)\s*(?:Jahre?|Years?|ans?)\b/i) || text.match(/(\d+)\s*(?:Monate?|Months?)\b/i) || text.match(/(\d+)Y\b/);
     if (durationMatch) {
       const num = parseInt(durationMatch[1]);
@@ -165,11 +157,9 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
       values["custom.warranty_duration"] = isMonths ? `${num} Months` : `${num} Years`;
     }
 
-    // Type: On-Site, Vor-Ort, Carry-in, Mail-in, etc.
     const typeMatch = text.match(/\b(On-?Site|Vor-?Ort|Carry-?in|Mail-?in|Bring-?in|Pick-?up|Return|Depot)\b/i);
     if (typeMatch) values["custom.warranty_type"] = typeMatch[0];
 
-    // Coverage: Accidental Damage, Premier Support, etc.
     const coverageMatch = text.match(/\b(Accidental\s*Damage\s*(?:Protection)?|ADP|Premier\s*Support|Keep\s*Your\s*Drive|Battery\s*Replacement|Sealed\s*Battery|International\s*Warranty)\b/i);
     if (coverageMatch) values["custom.coverage"] = coverageMatch[0];
   }
@@ -177,7 +167,6 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
   if (type === "Accessory") {
     values["custom.brand"] = product.manufacturer || "";
 
-    // Addon type
     const typePatterns: [RegExp, string][] = [
       [/\b(?:Mouse|Maus)\b/i, "Mouse"],
       [/\b(?:Keyboard|Tastatur)\b/i, "Keyboard"],
@@ -185,7 +174,7 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
       [/\b(?:Laptop\s*(?:Bag|Tasche)|Notebook\s*(?:Bag|Tasche)|Sleeve|Case)\b/i, "Laptop Bag"],
       [/\b(?:Docking\s*Station|Dock|Thunderbolt\s*Dock)\b/i, "Docking Station"],
       [/\b(?:Monitor|Display|Bildschirm)\b/i, "Monitor"],
-      [/\b(?:Headset|Kopfhörer)\b/i, "Headset"],
+      [/\b(?:Headset|Kopfh\u00f6rer)\b/i, "Headset"],
       [/\b(?:Webcam|Kamera)\b/i, "Webcam"],
       [/\b(?:Charger|Netzteil|Power\s*Adapter)\b/i, "Charger"],
       [/\b(?:USB[\s-]*Hub)\b/i, "USB Hub"],
@@ -195,7 +184,6 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
       if (pattern.test(text)) { values["custom.addon_type"] = label; break; }
     }
 
-    // Compatibility: USB-C, USB-A, Bluetooth, etc.
     const connPatterns: string[] = [];
     if (/\bUSB[\s-]*C\b/i.test(text)) connPatterns.push("USB-C");
     if (/\bUSB[\s-]*A\b/i.test(text)) connPatterns.push("USB-A");
@@ -204,11 +192,10 @@ function autoFillMetafields(product: ItScopeProduct, type: ProductType): Record<
     if (/\bThunderbolt\b/i.test(text)) connPatterns.push("Thunderbolt");
     if (connPatterns.length > 0) values["custom.compatibility"] = connPatterns.join(", ");
 
-    // Color
     const colorPatterns: [RegExp, string][] = [
       [/\b(?:Black|Schwarz)\b/i, "Black"],
       [/\b(?:Silver|Silber)\b/i, "Silver"],
-      [/\b(?:White|Weiß|Weiss)\b/i, "White"],
+      [/\b(?:White|Wei\u00df|Weiss)\b/i, "White"],
       [/\b(?:Grey|Gray|Grau)\b/i, "Grey"],
       [/\b(?:Blue|Blau)\b/i, "Blue"],
       [/\b(?:Red|Rot)\b/i, "Red"],
@@ -227,6 +214,7 @@ interface TrackedProduct {
   itscopeSku: string;
   itscopeProductId: string;
   shopifyProductId: string;
+  shopifyProductTitle: string | null;
   distributorId: string;
   distributorName: string;
   productType: string;
@@ -270,6 +258,53 @@ interface ItScopeProduct {
   features: Record<string, string>;
 }
 
+// --- Grouped product types ---
+interface ProductGroup {
+  key: string; // shopifyProductId or fallback
+  title: string;
+  shopifyProductId: string | null;
+  products: TrackedProduct[];
+}
+
+function groupProducts(products: TrackedProduct[]): ProductGroup[] {
+  const grouped = new Map<string, TrackedProduct[]>();
+  const order: string[] = [];
+
+  for (const p of products) {
+    const key = p.shopifyProductId || `standalone-${p.id}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+      order.push(key);
+    }
+    grouped.get(key)!.push(p);
+  }
+
+  return order.map((key) => {
+    const prods = grouped.get(key)!;
+    const first = prods[0];
+    const title = first.shopifyProductTitle || first.itscopeSku;
+    return {
+      key,
+      title,
+      shopifyProductId: first.shopifyProductId || null,
+      products: prods,
+    };
+  });
+}
+
+// --- Bulk import types ---
+interface BulkSearchResult {
+  sku: string;
+  product: ItScopeProduct | null;
+  error: string | null;
+}
+
+interface BulkImportResult {
+  sku: string;
+  success: boolean;
+  error: string | null;
+}
+
 function ProjectIdCell({ value, onSave }: { value: string; onSave: (val: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -295,11 +330,28 @@ function ProjectIdCell({ value, onSave }: { value: string; onSave: (val: string)
 
   return (
     <InlineStack gap="200" blockAlign="center">
-      <Text as="span" variant="bodySm">{value || "—"}</Text>
+      <Text as="span" variant="bodySm">{value || "\u2014"}</Text>
       <Button size="micro" variant="plain" onClick={() => setEditing(true)}>Edit</Button>
     </InlineStack>
   );
 }
+
+// Table header styles
+const thStyle: React.CSSProperties = {
+  padding: "8px 12px",
+  textAlign: "left",
+  fontWeight: 600,
+  fontSize: 13,
+  borderBottom: "1px solid #e1e3e5",
+  whiteSpace: "nowrap",
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: "6px 12px",
+  fontSize: 13,
+  borderBottom: "1px solid #f1f2f3",
+  verticalAlign: "middle",
+};
 
 export default function AppPage() {
   const [skuInput, setSkuInput] = useState("");
@@ -323,12 +375,32 @@ export default function AppPage() {
   const [resendLoading, setResendLoading] = useState(false);
   const [resendLogs, setResendLogs] = useState<{ time: string; level: string; message: string }[]>([]);
 
-  // Get shop from URL params (Shopify embeds the app with ?shop=...)
+  // Grouped view state
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  // Bulk import state
+  const [importMode, setImportMode] = useState<"single" | "bulk">("single");
+  const [bulkSkuInput, setBulkSkuInput] = useState("");
+  const [bulkSearching, setBulkSearching] = useState(false);
+  const [bulkResults, setBulkResults] = useState<BulkSearchResult[]>([]);
+  const [bulkDistributor, setBulkDistributor] = useState("");
+  const [bulkProductType, setBulkProductType] = useState<ProductType>("Laptop");
+  const [bulkShippingMode, setBulkShippingMode] = useState("warehouse");
+  const [bulkProjectId, setBulkProjectId] = useState("");
+  const [bulkImporting, setBulkImporting] = useState(false);
+  const [bulkImportResults, setBulkImportResults] = useState<BulkImportResult[]>([]);
+  const [bulkProgress, setBulkProgress] = useState(0);
+
+  // Bulk action loading state
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
+
   const shop = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("shop") || ""
     : "";
 
-  // Load settings and locations on mount
   useEffect(() => {
     if (shop) {
       loadTrackedProducts();
@@ -387,7 +459,6 @@ export default function AppPage() {
     }
   };
 
-  // Auto-fill metafield values from ItScope product data
   useEffect(() => {
     if (!searchResult) return;
     const autoValues = autoFillMetafields(searchResult, productType);
@@ -570,54 +641,323 @@ export default function AppPage() {
     [shop]
   );
 
-  const productsWithAlerts = trackedProducts.filter((p) => p.priceAlert);
+  // --- Grouped view helpers ---
+  const toggleGroup = useCallback((key: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
 
-  const rows = trackedProducts.map((p) => [
-    p.itscopeSku,
-    p.productType === "Warranty" ? (
-      <Badge tone="attention">Warranty</Badge>
-    ) : p.productType === "Accessory" ? (
-      <Badge tone="info">Accessory</Badge>
-    ) : (
-      <Badge>Laptop</Badge>
-    ),
-    p.distributorName || p.distributorId,
-    p.shippingMode === "dropship" ? (
-      <Badge tone="info">Dropship</Badge>
-    ) : (
-      <Badge>Warehouse</Badge>
-    ),
-    <ProjectIdCell
-      value={p.projectId || ""}
-      onSave={(val) => handleUpdateProjectId(p.id, val)}
-    />,
-    p.lastStock !== null ? String(p.lastStock) : "—",
-    p.lastPrice !== null ? (
-      p.priceAlert ? (
-        <InlineStack gap="200" blockAlign="center">
-          <Badge tone="warning">{`€${p.lastPrice.toFixed(2)}`}</Badge>
-          {p.importPrice !== null && (
-            <Text as="span" variant="bodySm" tone="subdued">was €{p.importPrice.toFixed(2)}</Text>
-          )}
-          <Button size="micro" variant="plain" onClick={() => handleDismissPriceAlert(p.id)}>Dismiss</Button>
-        </InlineStack>
-      ) : (
-        `€${p.lastPrice.toFixed(2)}`
-      )
-    ) : "—",
-    p.lastStockSync
-      ? new Date(p.lastStockSync).toLocaleString()
-      : "Never",
-    <InlineStack gap="200">
-      <Button size="micro" variant="plain" onClick={() => handleRelink(p.id)}>Relink</Button>
-      <Button size="micro" variant="plain" tone="critical" onClick={() => handleDelete(p.id)}>Remove</Button>
-    </InlineStack>,
-  ]);
+  // --- Bulk selection helpers ---
+  const allProductIds = trackedProducts.map((p) => p.id);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === allProductIds.length) {
+        return new Set();
+      }
+      return new Set(allProductIds);
+    });
+  }, [allProductIds]);
+
+  const toggleSelectProduct = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleSelectGroup = useCallback((group: ProductGroup) => {
+    const groupIds = group.products.map((p) => p.id);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = groupIds.every((id) => prev.has(id));
+      if (allSelected) {
+        groupIds.forEach((id) => next.delete(id));
+      } else {
+        groupIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }, []);
+
+  // --- Bulk actions ---
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    setBulkActionLoading(true);
+    try {
+      await fetch("/api/products", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shop, ids: Array.from(selectedIds) }),
+      });
+      setSuccess(`Deleted ${selectedIds.size} product(s)`);
+      setSelectedIds(new Set());
+      loadTrackedProducts();
+    } catch (e) {
+      console.error("Bulk delete failed:", e);
+      setError("Bulk delete failed");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  }, [shop, selectedIds]);
+
+  const handleBulkRelink = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    setBulkActionLoading(true);
+    let successCount = 0;
+    let failCount = 0;
+    try {
+      for (const id of selectedIds) {
+        try {
+          const res = await fetch("/api/products", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ shop, id, relinkShopify: true }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch {
+          failCount++;
+        }
+      }
+      setSuccess(`Relinked ${successCount} product(s)${failCount > 0 ? `, ${failCount} failed` : ""}`);
+      setSelectedIds(new Set());
+      loadTrackedProducts();
+    } catch (e) {
+      console.error("Bulk relink failed:", e);
+      setError("Bulk relink failed");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  }, [shop, selectedIds]);
+
+  // --- Bulk import handlers ---
+  const handleBulkSearch = useCallback(async () => {
+    const skus = bulkSkuInput
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (skus.length === 0) return;
+
+    setBulkSearching(true);
+    setBulkResults([]);
+    setBulkImportResults([]);
+    setError("");
+
+    const results: BulkSearchResult[] = [];
+
+    for (const sku of skus) {
+      try {
+        const res = await fetch(
+          `/api/itscope-search?sku=${encodeURIComponent(sku)}&shop=${encodeURIComponent(shop)}`
+        );
+        const data = await res.json();
+        if (!res.ok) {
+          results.push({ sku, product: null, error: data.error || "Not found" });
+        } else {
+          results.push({ sku, product: data, error: null });
+        }
+      } catch (e: any) {
+        results.push({ sku, product: null, error: e.message || "Search failed" });
+      }
+    }
+
+    setBulkResults(results);
+
+    // Auto-select first available distributor that is common
+    const allDistributorIds = results
+      .filter((r) => r.product)
+      .flatMap((r) => r.product!.offers.filter((o) => o.available && isAllowedDistributor(o.distributorName)).map((o) => o.distributorId));
+    if (allDistributorIds.length > 0) {
+      // Pick the most common distributor
+      const counts = new Map<string, number>();
+      for (const id of allDistributorIds) {
+        counts.set(id, (counts.get(id) || 0) + 1);
+      }
+      const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+      if (best) setBulkDistributor(best[0]);
+    }
+
+    setBulkSearching(false);
+  }, [bulkSkuInput, shop]);
+
+  const handleBulkImport = useCallback(async () => {
+    const importable = bulkResults.filter((r) => r.product);
+    if (importable.length === 0) return;
+
+    setBulkImporting(true);
+    setBulkImportResults([]);
+    setBulkProgress(0);
+    setError("");
+
+    const results: BulkImportResult[] = [];
+
+    for (let i = 0; i < importable.length; i++) {
+      const r = importable[i];
+      const product = r.product!;
+
+      // Find the selected distributor's offer, or fall back to first available
+      let offer = product.offers.find(
+        (o) => o.distributorId === bulkDistributor && o.available && isAllowedDistributor(o.distributorName)
+      );
+      if (!offer) {
+        offer = product.offers.find((o) => o.available && isAllowedDistributor(o.distributorName));
+      }
+
+      if (!offer) {
+        results.push({ sku: r.sku, success: false, error: "No available distributor" });
+        setBulkProgress(i + 1);
+        continue;
+      }
+
+      try {
+        const res = await fetch("/api/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            shop,
+            sku: product.manufacturerSku,
+            distributorId: offer.distributorId,
+            distributorName: offer.distributorName,
+            shippingMode: bulkProductType === "Warranty" ? "warehouse" : bulkShippingMode,
+            projectId: bulkProjectId.trim() || undefined,
+            productType: bulkProductType,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          const details = data.details?.map((d: any) => d.message).join("; ");
+          results.push({ sku: r.sku, success: false, error: details || data.error || "Import failed" });
+        } else {
+          results.push({ sku: r.sku, success: true, error: null });
+        }
+      } catch (e: any) {
+        results.push({ sku: r.sku, success: false, error: e.message || "Import failed" });
+      }
+
+      setBulkProgress(i + 1);
+    }
+
+    setBulkImportResults(results);
+    setBulkImporting(false);
+
+    const successCount = results.filter((r) => r.success).length;
+    if (successCount > 0) {
+      setSuccess(`Imported ${successCount} of ${importable.length} product(s)`);
+      loadTrackedProducts();
+    }
+  }, [bulkResults, bulkDistributor, bulkProductType, bulkShippingMode, bulkProjectId, shop]);
+
+  // Collect all unique distributors from bulk results for the selector
+  const bulkDistributorOptions = (() => {
+    const seen = new Map<string, string>();
+    for (const r of bulkResults) {
+      if (!r.product) continue;
+      for (const o of r.product.offers) {
+        if (o.available && isAllowedDistributor(o.distributorName) && !seen.has(o.distributorId)) {
+          seen.set(o.distributorId, o.distributorName);
+        }
+      }
+    }
+    return [...seen.entries()].map(([id, name]) => ({ label: name, value: id }));
+  })();
+
+  const productsWithAlerts = trackedProducts.filter((p) => p.priceAlert);
+  const productGroups = groupProducts(trackedProducts);
 
   const tabs = [
     { id: "products", content: "Products" },
     { id: "orders", content: "Resend Order" },
   ];
+
+  // --- Render a single product row inside the grouped table ---
+  const renderProductRow = (p: TrackedProduct, indent: boolean) => (
+    <tr key={p.id}>
+      <td style={tdStyle}>
+        <Checkbox
+          label=""
+          labelHidden
+          checked={selectedIds.has(p.id)}
+          onChange={() => toggleSelectProduct(p.id)}
+        />
+      </td>
+      <td style={{ ...tdStyle, paddingLeft: indent ? 36 : 12 }}>
+        <Text as="span" variant="bodySm">{p.itscopeSku}</Text>
+      </td>
+      <td style={tdStyle}>
+        {p.productType === "Warranty" ? (
+          <Badge tone="attention">Warranty</Badge>
+        ) : p.productType === "Accessory" ? (
+          <Badge tone="info">Accessory</Badge>
+        ) : (
+          <Badge>Laptop</Badge>
+        )}
+      </td>
+      <td style={tdStyle}>
+        <Text as="span" variant="bodySm">{p.distributorName || p.distributorId}</Text>
+      </td>
+      <td style={tdStyle}>
+        {p.shippingMode === "dropship" ? (
+          <Badge tone="info">Dropship</Badge>
+        ) : (
+          <Badge>Warehouse</Badge>
+        )}
+      </td>
+      <td style={tdStyle}>
+        <ProjectIdCell
+          value={p.projectId || ""}
+          onSave={(val) => handleUpdateProjectId(p.id, val)}
+        />
+      </td>
+      <td style={{ ...tdStyle, textAlign: "right" }}>
+        <Text as="span" variant="bodySm">{p.lastStock !== null ? String(p.lastStock) : "\u2014"}</Text>
+      </td>
+      <td style={{ ...tdStyle, textAlign: "right" }}>
+        {p.lastPrice !== null ? (
+          p.priceAlert ? (
+            <InlineStack gap="200" blockAlign="center">
+              <Badge tone="warning">{`\u20ac${p.lastPrice.toFixed(2)}`}</Badge>
+              {p.importPrice !== null && (
+                <Text as="span" variant="bodySm" tone="subdued">was \u20ac{p.importPrice.toFixed(2)}</Text>
+              )}
+              <Button size="micro" variant="plain" onClick={() => handleDismissPriceAlert(p.id)}>Dismiss</Button>
+            </InlineStack>
+          ) : (
+            <Text as="span" variant="bodySm">{`\u20ac${p.lastPrice.toFixed(2)}`}</Text>
+          )
+        ) : (
+          <Text as="span" variant="bodySm">{"\u2014"}</Text>
+        )}
+      </td>
+      <td style={tdStyle}>
+        <Text as="span" variant="bodySm">
+          {p.lastStockSync ? new Date(p.lastStockSync).toLocaleString() : "Never"}
+        </Text>
+      </td>
+      <td style={tdStyle}>
+        <InlineStack gap="200">
+          <Button size="micro" variant="plain" onClick={() => handleRelink(p.id)}>Relink</Button>
+          <Button size="micro" variant="plain" tone="critical" onClick={() => handleDelete(p.id)}>Remove</Button>
+        </InlineStack>
+      </td>
+    </tr>
+  );
 
   return (
     <Page title="ItScope Product Connector">
@@ -740,147 +1080,338 @@ export default function AppPage() {
           </Layout>
         )}
 
+        {/* Import section with single/bulk toggle */}
         {selectedTab === 0 && <Layout>
           <Layout.Section>
             <Card>
               <BlockStack gap="400">
-                <Text as="h2" variant="headingMd">
-                  Import Product from ItScope
-                </Text>
-                <InlineStack gap="300" align="end">
-                  <div style={{ flex: 1 }}>
-                    <TextField
-                      label="Manufacturer SKU"
-                      value={skuInput}
-                      onChange={setSkuInput}
-                      placeholder="Enter manufacturer part number (e.g., MZ-75E250B/EU)"
-                      autoComplete="off"
-                      connectedRight={
-                        <Button
-                          variant="primary"
-                          onClick={handleSearch}
-                          loading={loading}
-                        >
-                          Search
-                        </Button>
-                      }
-                    />
-                  </div>
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text as="h2" variant="headingMd">
+                    Import Product from ItScope
+                  </Text>
+                  <InlineStack gap="200">
+                    <Button
+                      size="slim"
+                      variant={importMode === "single" ? "primary" : "secondary"}
+                      onClick={() => setImportMode("single")}
+                    >
+                      Single
+                    </Button>
+                    <Button
+                      size="slim"
+                      variant={importMode === "bulk" ? "primary" : "secondary"}
+                      onClick={() => setImportMode("bulk")}
+                    >
+                      Bulk Import
+                    </Button>
+                  </InlineStack>
                 </InlineStack>
 
-                {searchResult && (
-                  <Card>
-                    <BlockStack gap="400">
-                      <Text as="h3" variant="headingSm">
-                        {searchResult.name}
-                      </Text>
-                      <Text as="p" variant="bodySm" tone="subdued">
-                        {searchResult.manufacturer} — EAN: {searchResult.ean || "N/A"}
-                      </Text>
+                {/* Single import mode (existing) */}
+                {importMode === "single" && (
+                  <>
+                    <InlineStack gap="300" align="end">
+                      <div style={{ flex: 1 }}>
+                        <TextField
+                          label="Manufacturer SKU"
+                          value={skuInput}
+                          onChange={setSkuInput}
+                          placeholder="Enter manufacturer part number (e.g., MZ-75E250B/EU)"
+                          autoComplete="off"
+                          connectedRight={
+                            <Button
+                              variant="primary"
+                              onClick={handleSearch}
+                              loading={loading}
+                            >
+                              Search
+                            </Button>
+                          }
+                        />
+                      </div>
+                    </InlineStack>
 
-                      {searchResult.offers.some((o) => o.available && isAllowedDistributor(o.distributorName)) ? (
-                        <>
-                          <Select
-                            label="Select Distributor"
-                            options={searchResult.offers
-                              .filter((o) => o.available && isAllowedDistributor(o.distributorName))
-                              .map((o) => ({
-                                label: `${o.distributorName} — €${o.price.toFixed(2)} — ${o.stockStatusText} (${o.condition})`,
-                                value: o.distributorId,
-                              }))}
-                            value={selectedDistributor}
-                            onChange={setSelectedDistributor}
-                          />
+                    {searchResult && (
+                      <Card>
+                        <BlockStack gap="400">
+                          <Text as="h3" variant="headingSm">
+                            {searchResult.name}
+                          </Text>
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            {searchResult.manufacturer} \u2014 EAN: {searchResult.ean || "N/A"}
+                          </Text>
 
-                          <Select
-                            label="Product Type"
-                            options={[
-                              { label: "Laptop", value: "Laptop" },
-                              { label: "Warranty", value: "Warranty" },
-                              { label: "Accessory (Add-on)", value: "Accessory" },
-                            ]}
-                            value={productType}
-                            onChange={(val) => setProductType(val as ProductType)}
-                          />
-
-                          <BlockStack gap="300">
-                            <Text as="p" variant="bodySm" fontWeight="semibold">
-                              Product Details
-                            </Text>
-                            {PRODUCT_TYPE_METAFIELDS[productType].map((field) => (
-                              <TextField
-                                key={field.key}
-                                label={field.label}
-                                value={metafieldValues[field.key] || ""}
-                                onChange={(val) => handleMetafieldChange(field.key, val)}
-                                placeholder={field.placeholder}
-                                autoComplete="off"
+                          {searchResult.offers.some((o) => o.available && isAllowedDistributor(o.distributorName)) ? (
+                            <>
+                              <Select
+                                label="Select Distributor"
+                                options={searchResult.offers
+                                  .filter((o) => o.available && isAllowedDistributor(o.distributorName))
+                                  .map((o) => ({
+                                    label: `${o.distributorName} \u2014 \u20ac${o.price.toFixed(2)} \u2014 ${o.stockStatusText} (${o.condition})`,
+                                    value: o.distributorId,
+                                  }))}
+                                value={selectedDistributor}
+                                onChange={setSelectedDistributor}
                               />
+
+                              <Select
+                                label="Product Type"
+                                options={[
+                                  { label: "Laptop", value: "Laptop" },
+                                  { label: "Warranty", value: "Warranty" },
+                                  { label: "Accessory (Add-on)", value: "Accessory" },
+                                ]}
+                                value={productType}
+                                onChange={(val) => setProductType(val as ProductType)}
+                              />
+
+                              <BlockStack gap="300">
+                                <Text as="p" variant="bodySm" fontWeight="semibold">
+                                  Product Details
+                                </Text>
+                                {PRODUCT_TYPE_METAFIELDS[productType].map((field) => (
+                                  <TextField
+                                    key={field.key}
+                                    label={field.label}
+                                    value={metafieldValues[field.key] || ""}
+                                    onChange={(val) => handleMetafieldChange(field.key, val)}
+                                    placeholder={field.placeholder}
+                                    autoComplete="off"
+                                  />
+                                ))}
+                              </BlockStack>
+
+                              {productType !== "Warranty" && (
+                                <>
+                                  <BlockStack gap="200">
+                                    <Text as="p" variant="bodySm" fontWeight="semibold">
+                                      Shipping Mode
+                                    </Text>
+                                    <InlineStack gap="400">
+                                      <RadioButton
+                                        label="Ship to Warehouse"
+                                        checked={shippingMode === "warehouse"}
+                                        id="warehouse"
+                                        name="shippingMode"
+                                        onChange={() => setShippingMode("warehouse")}
+                                      />
+                                      <RadioButton
+                                        label="Dropshipping"
+                                        checked={shippingMode === "dropship"}
+                                        id="dropship"
+                                        name="shippingMode"
+                                        onChange={() => setShippingMode("dropship")}
+                                      />
+                                    </InlineStack>
+                                  </BlockStack>
+
+                                  <TextField
+                                    label="Project-ID (optional)"
+                                    value={projectId}
+                                    onChange={setProjectId}
+                                    placeholder="ItScope project ID for special pricing"
+                                    autoComplete="off"
+                                  />
+                                </>
+                              )}
+
+                              <Button
+                                variant="primary"
+                                onClick={handleImport}
+                                loading={importing}
+                              >
+                                Import to Shopify
+                              </Button>
+                            </>
+                          ) : (
+                            <Banner tone="warning">
+                              <p>No distributor offers found for this product.</p>
+                            </Banner>
+                          )}
+                        </BlockStack>
+                      </Card>
+                    )}
+                  </>
+                )}
+
+                {/* Bulk import mode */}
+                {importMode === "bulk" && (
+                  <BlockStack gap="400">
+                    <TextField
+                      label="SKUs (one per line)"
+                      value={bulkSkuInput}
+                      onChange={setBulkSkuInput}
+                      placeholder={"MZ-75E250B/EU\n21HM006DGE\n5WS0A14073"}
+                      autoComplete="off"
+                      multiline={6}
+                    />
+                    <Button
+                      variant="primary"
+                      onClick={handleBulkSearch}
+                      loading={bulkSearching}
+                    >
+                      Search All
+                    </Button>
+
+                    {bulkResults.length > 0 && (
+                      <Card>
+                        <BlockStack gap="400">
+                          <Text as="h3" variant="headingSm">
+                            Search Results ({bulkResults.filter((r) => r.product).length} found, {bulkResults.filter((r) => !r.product).length} not found)
+                          </Text>
+
+                          {/* List results */}
+                          <BlockStack gap="200">
+                            {bulkResults.map((r, i) => (
+                              <InlineStack key={i} gap="300" blockAlign="center">
+                                <div style={{ width: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  <Text as="span" variant="bodySm" fontWeight="semibold">{r.sku}</Text>
+                                </div>
+                                {r.product ? (
+                                  <Text as="span" variant="bodySm">{r.product.name}</Text>
+                                ) : (
+                                  <Text as="span" variant="bodySm" tone="critical">{r.error}</Text>
+                                )}
+                              </InlineStack>
                             ))}
                           </BlockStack>
 
-                          {productType !== "Warranty" && (
+                          {bulkResults.some((r) => r.product) && (
                             <>
-                              <BlockStack gap="200">
-                                <Text as="p" variant="bodySm" fontWeight="semibold">
-                                  Shipping Mode
-                                </Text>
-                                <InlineStack gap="400">
-                                  <RadioButton
-                                    label="Ship to Warehouse"
-                                    checked={shippingMode === "warehouse"}
-                                    id="warehouse"
-                                    name="shippingMode"
-                                    onChange={() => setShippingMode("warehouse")}
-                                  />
-                                  <RadioButton
-                                    label="Dropshipping"
-                                    checked={shippingMode === "dropship"}
-                                    id="dropship"
-                                    name="shippingMode"
-                                    onChange={() => setShippingMode("dropship")}
-                                  />
-                                </InlineStack>
-                              </BlockStack>
+                              {bulkDistributorOptions.length > 0 && (
+                                <Select
+                                  label="Distributor (for all)"
+                                  options={bulkDistributorOptions}
+                                  value={bulkDistributor}
+                                  onChange={setBulkDistributor}
+                                />
+                              )}
 
-                              <TextField
-                                label="Project-ID (optional)"
-                                value={projectId}
-                                onChange={setProjectId}
-                                placeholder="ItScope project ID for special pricing"
-                                autoComplete="off"
+                              <Select
+                                label="Product Type (for all)"
+                                options={[
+                                  { label: "Laptop", value: "Laptop" },
+                                  { label: "Warranty", value: "Warranty" },
+                                  { label: "Accessory (Add-on)", value: "Accessory" },
+                                ]}
+                                value={bulkProductType}
+                                onChange={(val) => setBulkProductType(val as ProductType)}
                               />
+
+                              {bulkProductType !== "Warranty" && (
+                                <>
+                                  <BlockStack gap="200">
+                                    <Text as="p" variant="bodySm" fontWeight="semibold">
+                                      Shipping Mode
+                                    </Text>
+                                    <InlineStack gap="400">
+                                      <RadioButton
+                                        label="Ship to Warehouse"
+                                        checked={bulkShippingMode === "warehouse"}
+                                        id="bulk-warehouse"
+                                        name="bulkShippingMode"
+                                        onChange={() => setBulkShippingMode("warehouse")}
+                                      />
+                                      <RadioButton
+                                        label="Dropshipping"
+                                        checked={bulkShippingMode === "dropship"}
+                                        id="bulk-dropship"
+                                        name="bulkShippingMode"
+                                        onChange={() => setBulkShippingMode("dropship")}
+                                      />
+                                    </InlineStack>
+                                  </BlockStack>
+
+                                  <TextField
+                                    label="Project-ID (optional, for all)"
+                                    value={bulkProjectId}
+                                    onChange={setBulkProjectId}
+                                    placeholder="ItScope project ID for special pricing"
+                                    autoComplete="off"
+                                  />
+                                </>
+                              )}
+
+                              <Button
+                                variant="primary"
+                                onClick={handleBulkImport}
+                                loading={bulkImporting}
+                              >
+                                {`Import All (${bulkResults.filter((r) => r.product).length} products)`}
+                              </Button>
+
+                              {bulkImporting && (
+                                <InlineStack gap="300" blockAlign="center">
+                                  <Spinner size="small" />
+                                  <Text as="span" variant="bodySm">
+                                    Importing {bulkProgress} of {bulkResults.filter((r) => r.product).length}...
+                                  </Text>
+                                </InlineStack>
+                              )}
+
+                              {bulkImportResults.length > 0 && (
+                                <BlockStack gap="200">
+                                  <Text as="p" variant="bodySm" fontWeight="semibold">Import Results:</Text>
+                                  {bulkImportResults.map((r, i) => (
+                                    <InlineStack key={i} gap="300" blockAlign="center">
+                                      <div style={{ width: 180 }}>
+                                        <Text as="span" variant="bodySm">{r.sku}</Text>
+                                      </div>
+                                      {r.success ? (
+                                        <Badge tone="success">Imported</Badge>
+                                      ) : (
+                                        <Badge tone="critical">{r.error || "Failed"}</Badge>
+                                      )}
+                                    </InlineStack>
+                                  ))}
+                                </BlockStack>
+                              )}
                             </>
                           )}
-
-                          <Button
-                            variant="primary"
-                            onClick={handleImport}
-                            loading={importing}
-                          >
-                            Import to Shopify
-                          </Button>
-                        </>
-                      ) : (
-                        <Banner tone="warning">
-                          <p>No distributor offers found for this product.</p>
-                        </Banner>
-                      )}
-                    </BlockStack>
-                  </Card>
+                        </BlockStack>
+                      </Card>
+                    )}
+                  </BlockStack>
                 )}
               </BlockStack>
             </Card>
           </Layout.Section>
         </Layout>}
 
+        {/* Tracked products with grouped view and bulk actions */}
         {selectedTab === 0 && <Layout>
           <Layout.Section>
             <Card>
               <BlockStack gap="400">
-                <Text as="h2" variant="headingMd">
-                  Tracked Products ({trackedProducts.length})
-                </Text>
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text as="h2" variant="headingMd">
+                    Tracked Products ({trackedProducts.length})
+                  </Text>
+                  {selectedIds.size > 0 && (
+                    <InlineStack gap="200">
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        {selectedIds.size} selected
+                      </Text>
+                      <Button
+                        size="slim"
+                        onClick={handleBulkRelink}
+                        loading={bulkActionLoading}
+                      >
+                        Relink Selected
+                      </Button>
+                      <Button
+                        size="slim"
+                        tone="critical"
+                        onClick={handleBulkDelete}
+                        loading={bulkActionLoading}
+                      >
+                        Delete Selected
+                      </Button>
+                    </InlineStack>
+                  )}
+                </InlineStack>
+
                 {productsLoading ? (
                   <Box padding="400">
                     <InlineStack align="center">
@@ -888,31 +1419,76 @@ export default function AppPage() {
                     </InlineStack>
                   </Box>
                 ) : trackedProducts.length > 0 ? (
-                  <DataTable
-                    columnContentTypes={[
-                      "text",
-                      "text",
-                      "text",
-                      "text",
-                      "text",
-                      "numeric",
-                      "numeric",
-                      "text",
-                      "text",
-                    ]}
-                    headings={[
-                      "SKU",
-                      "Type",
-                      "Distributor",
-                      "Shipping",
-                      "Project-ID",
-                      "Stock",
-                      "Price",
-                      "Last Sync",
-                      "",
-                    ]}
-                    rows={rows}
-                  />
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ ...thStyle, width: 40 }}>
+                            <Checkbox
+                              label=""
+                              labelHidden
+                              checked={selectedIds.size === allProductIds.length && allProductIds.length > 0}
+                              onChange={toggleSelectAll}
+                            />
+                          </th>
+                          <th style={thStyle}>SKU / Product</th>
+                          <th style={thStyle}>Type</th>
+                          <th style={thStyle}>Distributor</th>
+                          <th style={thStyle}>Shipping</th>
+                          <th style={thStyle}>Project-ID</th>
+                          <th style={{ ...thStyle, textAlign: "right" }}>Stock</th>
+                          <th style={{ ...thStyle, textAlign: "right" }}>Price</th>
+                          <th style={thStyle}>Last Sync</th>
+                          <th style={thStyle}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {productGroups.map((group) => {
+                          const isMulti = group.products.length > 1;
+                          const isExpanded = expandedGroups.has(group.key);
+                          const groupAllSelected = group.products.every((p) => selectedIds.has(p.id));
+
+                          if (!isMulti) {
+                            // Single product — render directly
+                            return renderProductRow(group.products[0], false);
+                          }
+
+                          // Multi-variant group
+                          return (
+                            <React.Fragment key={group.key}>
+                              {/* Group header row */}
+                              <tr
+                                style={{ background: "#f6f6f7", cursor: "pointer" }}
+                                onClick={() => toggleGroup(group.key)}
+                              >
+                                <td style={tdStyle} onClick={(e) => e.stopPropagation()}>
+                                  <Checkbox
+                                    label=""
+                                    labelHidden
+                                    checked={groupAllSelected}
+                                    onChange={() => toggleSelectGroup(group)}
+                                  />
+                                </td>
+                                <td style={tdStyle} colSpan={9}>
+                                  <InlineStack gap="200" blockAlign="center">
+                                    <span style={{ fontSize: 12, display: "inline-block", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s" }}>
+                                      &#9654;
+                                    </span>
+                                    <Text as="span" variant="bodySm" fontWeight="semibold">
+                                      {group.title}
+                                    </Text>
+                                    <Badge>{`${group.products.length} variants`}</Badge>
+                                  </InlineStack>
+                                </td>
+                              </tr>
+                              {/* Expanded variant rows */}
+                              {isExpanded && group.products.map((p) => renderProductRow(p, true))}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 ) : (
                   <Text as="p" tone="subdued">
                     No products tracked yet. Use the search above to import

@@ -373,6 +373,7 @@ export async function POST(request: NextRequest) {
       itscopeSku: sku,
       itscopeProductId: itscopeProduct.productId,
       shopifyProductId: shopifyProduct?.id,
+      shopifyProductTitle: shopifyProduct?.title || itscopeProduct.name || null,
       shopifyVariantId: variant?.id,
       shopifyInventoryItemId: variant?.inventoryItem?.id,
       distributorId,
@@ -458,6 +459,7 @@ export async function PATCH(request: NextRequest) {
     // Also fetch the correct distributor SKU from ItScope
     const updateData: Record<string, any> = {
       shopifyProductId: node.product.id,
+      shopifyProductTitle: node.product.title || null,
       shopifyVariantId: node.id,
       shopifyInventoryItemId: node.inventoryItem?.id || null,
     };
@@ -500,21 +502,26 @@ export async function PATCH(request: NextRequest) {
   return NextResponse.json({ success: true, product: updated });
 }
 
-// DELETE - Remove a tracked product
+// DELETE - Remove tracked product(s) — supports single id or array of ids
 export async function DELETE(request: NextRequest) {
-  const { shop, id } = await request.json();
+  const body = await request.json();
+  const { shop, id, ids } = body;
 
-  if (!shop || !id) {
+  if (!shop || (!id && !ids)) {
     return NextResponse.json(
-      { error: "Missing shop or id" },
+      { error: "Missing shop or id/ids" },
       { status: 400 }
     );
   }
 
-  await prisma.trackedProduct.update({
-    where: { id: Number(id) },
+  const idsToDelete: number[] = ids
+    ? (ids as number[]).map(Number)
+    : [Number(id)];
+
+  await prisma.trackedProduct.updateMany({
+    where: { id: { in: idsToDelete }, shop },
     data: { active: false },
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, deleted: idsToDelete.length });
 }
