@@ -19,6 +19,7 @@ import {
   InlineStack,
   Box,
   Modal,
+  Tabs,
 } from "@shopify/polaris";
 
 type ProductType = "Laptop" | "Warranty" | "Accessory";
@@ -317,6 +318,10 @@ export default function AppPage() {
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [selectedLocation, setSelectedLocation] = useState("");
   const [locationSaving, setLocationSaving] = useState(false);
+  const [selectedTab, setSelectedTab] = useState(0);
+  const [resendOrderNumber, setResendOrderNumber] = useState("");
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendLogs, setResendLogs] = useState<{ time: string; level: string; message: string }[]>([]);
 
   // Get shop from URL params (Shopify embeds the app with ?shop=...)
   const shop = typeof window !== "undefined"
@@ -514,6 +519,25 @@ export default function AppPage() {
     [shop]
   );
 
+  const handleResendOrder = useCallback(async () => {
+    if (!resendOrderNumber.trim()) return;
+    setResendLoading(true);
+    setResendLogs([]);
+    try {
+      const res = await fetch("/api/orders/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shop, orderNumber: resendOrderNumber.trim() }),
+      });
+      const data = await res.json();
+      setResendLogs(data.logs || []);
+    } catch (e: any) {
+      setResendLogs([{ time: new Date().toISOString(), level: "error", message: `Request failed: ${e.message}` }]);
+    } finally {
+      setResendLoading(false);
+    }
+  }, [shop, resendOrderNumber]);
+
   const handleUpdateProjectId = useCallback(
     async (id: number, newProjectId: string) => {
       try {
@@ -590,8 +614,14 @@ export default function AppPage() {
     </InlineStack>,
   ]);
 
+  const tabs = [
+    { id: "products", content: "Products" },
+    { id: "orders", content: "Resend Order" },
+  ];
+
   return (
     <Page title="ItScope Product Connector">
+      <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab} />
       <BlockStack gap="500">
         {error && (
           <Banner tone="critical" onDismiss={() => setError("")}>
@@ -603,7 +633,74 @@ export default function AppPage() {
             <p>{success}</p>
           </Banner>
         )}
-        {productsWithAlerts.length > 0 && (
+        {selectedTab === 1 && (
+          <Layout>
+            <Layout.Section>
+              <Card>
+                <BlockStack gap="400">
+                  <Text as="h2" variant="headingMd">
+                    Resend Order to ItScope
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    Enter the Shopify order number (e.g., edb-1034) to rebuild and resend the order.
+                    Fulfilled orders will not be touched.
+                  </Text>
+                  <InlineStack gap="300" blockAlign="end">
+                    <div style={{ flex: 1 }}>
+                      <TextField
+                        label="Order Number"
+                        value={resendOrderNumber}
+                        onChange={setResendOrderNumber}
+                        placeholder="e.g., edb-1034"
+                        autoComplete="off"
+                        connectedRight={
+                          <Button
+                            variant="primary"
+                            onClick={handleResendOrder}
+                            loading={resendLoading}
+                          >
+                            Resend
+                          </Button>
+                        }
+                      />
+                    </div>
+                  </InlineStack>
+                  {resendLogs.length > 0 && (
+                    <div style={{
+                      background: "#1a1a2e",
+                      borderRadius: 8,
+                      padding: 16,
+                      maxHeight: 400,
+                      overflowY: "auto",
+                      fontFamily: "monospace",
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                    }}>
+                      {resendLogs.map((entry, i) => (
+                        <div key={i} style={{
+                          color: entry.level === "error" ? "#ff6b6b" : entry.level === "success" ? "#51cf66" : "#dee2e6",
+                        }}>
+                          <span style={{ color: "#868e96" }}>
+                            {new Date(entry.time).toLocaleTimeString()}
+                          </span>{" "}
+                          <span style={{
+                            color: entry.level === "error" ? "#ff6b6b" : entry.level === "success" ? "#51cf66" : "#74c0fc",
+                            fontWeight: 600,
+                          }}>
+                            [{entry.level.toUpperCase()}]
+                          </span>{" "}
+                          {entry.message}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </BlockStack>
+              </Card>
+            </Layout.Section>
+          </Layout>
+        )}
+
+        {selectedTab === 0 && productsWithAlerts.length > 0 && (
           <Banner tone="warning">
             <p>
               {productsWithAlerts.length} product{productsWithAlerts.length > 1 ? "s have" : " has"} a price increase from ItScope:{" "}
@@ -613,7 +710,7 @@ export default function AppPage() {
           </Banner>
         )}
 
-        {locations.length > 0 && (
+        {selectedTab === 0 && locations.length > 0 && (
           <Layout>
             <Layout.Section>
               <Card>
@@ -643,7 +740,7 @@ export default function AppPage() {
           </Layout>
         )}
 
-        <Layout>
+        {selectedTab === 0 && <Layout>
           <Layout.Section>
             <Card>
               <BlockStack gap="400">
@@ -775,9 +872,9 @@ export default function AppPage() {
               </BlockStack>
             </Card>
           </Layout.Section>
-        </Layout>
+        </Layout>}
 
-        <Layout>
+        {selectedTab === 0 && <Layout>
           <Layout.Section>
             <Card>
               <BlockStack gap="400">
@@ -825,7 +922,7 @@ export default function AppPage() {
               </BlockStack>
             </Card>
           </Layout.Section>
-        </Layout>
+        </Layout>}
       </BlockStack>
     </Page>
   );
