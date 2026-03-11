@@ -454,16 +454,37 @@ export async function PATCH(request: NextRequest) {
     }
 
     const node = match.node;
+
+    // Also fetch the correct distributor SKU from ItScope
+    const updateData: Record<string, any> = {
+      shopifyProductId: node.product.id,
+      shopifyVariantId: node.id,
+      shopifyInventoryItemId: node.inventoryItem?.id || null,
+    };
+
+    if (tracked.distributorId) {
+      try {
+        const itscopeProduct = await searchProductBySku(tracked.itscopeSku);
+        if (itscopeProduct) {
+          const offer = itscopeProduct.offers.find(
+            (o) => String(o.distributorId) === tracked.distributorId
+          );
+          if (offer?.supplierSKU) {
+            updateData.distributorSku = offer.supplierSKU;
+            console.log(`Relink: updated distributorSku to ${offer.supplierSKU} for ${tracked.itscopeSku}`);
+          }
+        }
+      } catch (e) {
+        console.error("Relink: failed to fetch ItScope offer, skipping distributorSku update:", e);
+      }
+    }
+
     const updated = await prisma.trackedProduct.update({
       where: { id: Number(id) },
-      data: {
-        shopifyProductId: node.product.id,
-        shopifyVariantId: node.id,
-        shopifyInventoryItemId: node.inventoryItem?.id || null,
-      },
+      data: updateData,
     });
 
-    console.log(`Relinked product ${id}: product=${node.product.id}, variant=${node.id}`);
+    console.log(`Relinked product ${id}: product=${node.product.id}, variant=${node.id}, distributorSku=${updateData.distributorSku || "unchanged"}`);
     return NextResponse.json({ success: true, product: updated, relinked: true });
   }
 
