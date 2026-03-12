@@ -217,10 +217,11 @@ async function handleOrderUpdated(shop: string, order: any) {
     const hasAppleCare = hasAppleProduct && products.some(
       (p) => p.productType === "Warranty" && getVendor(p) === "apple"
     );
+    const appleRemarks = "Universität Wien\nStudent\nUniversitätsring 1\n1010 Wien";
     const remarks = hasAppleCare
-      ? "Universität Wien + AppleCare+"
+      ? appleRemarks + "\nAppleCare+"
       : hasAppleProduct
-        ? "Universität Wien"
+        ? appleRemarks
         : undefined;
 
     const orderXml = buildOrderXml({

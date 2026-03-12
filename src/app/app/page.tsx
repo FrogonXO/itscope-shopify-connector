@@ -551,6 +551,54 @@ export default function AppPage() {
     }
   }, [searchResult, selectedDistributor, shippingMode, projectId, shop, productType, metafieldValues]);
 
+  const handleTrackExisting = useCallback(async () => {
+    if (!searchResult || !selectedDistributor) return;
+
+    setImporting(true);
+    setError("");
+    setSuccess("");
+
+    const selectedOffer = searchResult.offers.find(
+      (o) => o.distributorId === selectedDistributor
+    );
+
+    try {
+      const res = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shop,
+          sku: searchResult.manufacturerSku,
+          distributorId: selectedDistributor,
+          distributorName: selectedOffer?.distributorName || "",
+          shippingMode: productType === "Warranty" ? "warehouse" : shippingMode,
+          projectId: projectId.trim() || undefined,
+          productType,
+          trackOnly: true,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Track existing failed");
+        return;
+      }
+
+      setSuccess(`Product "${searchResult.name}" tracked (linked to existing Shopify product)`);
+      setSearchResult(null);
+      setSkuInput("");
+      setProjectId("");
+      setProductType("Laptop");
+      setMetafieldValues({});
+      loadTrackedProducts();
+    } catch (e: any) {
+      setError(e.message || "Track existing failed");
+    } finally {
+      setImporting(false);
+    }
+  }, [searchResult, selectedDistributor, shippingMode, projectId, shop, productType]);
+
   const handleDelete = useCallback(
     async (id: number) => {
       try {
@@ -1216,13 +1264,24 @@ export default function AppPage() {
                                 </>
                               )}
 
-                              <Button
-                                variant="primary"
-                                onClick={handleImport}
-                                loading={importing}
-                              >
-                                Import to Shopify
-                              </Button>
+                              <InlineStack gap="300">
+                                <Button
+                                  variant="primary"
+                                  onClick={handleImport}
+                                  loading={importing}
+                                >
+                                  Import to Shopify
+                                </Button>
+                                <Button
+                                  onClick={handleTrackExisting}
+                                  loading={importing}
+                                >
+                                  Track Existing
+                                </Button>
+                              </InlineStack>
+                              <Text as="p" variant="bodySm" tone="subdued">
+                                "Import" creates a new Shopify product. "Track Existing" links to a product already in Shopify (by SKU match).
+                              </Text>
                             </>
                           ) : (
                             <Banner tone="warning">

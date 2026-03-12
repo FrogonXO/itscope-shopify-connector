@@ -20,10 +20,10 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(products);
 }
 
-// POST - Import a new product from ItScope to Shopify
+// POST - Import a new product from ItScope to Shopify (or track existing)
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { shop, sku, distributorId, distributorName, shippingMode, projectId, productType, metafields } = body;
+  const { shop, sku, distributorId, distributorName, shippingMode, projectId, productType, metafields, trackOnly } = body;
   const validTypes = ["Laptop", "Warranty", "Accessory"];
   const resolvedType = validTypes.includes(productType) ? productType : "Laptop";
 
@@ -74,6 +74,72 @@ export async function POST(request: NextRequest) {
 
   const client = await getShopifyClient(shop, session.accessToken!);
 
+  // Track Existing: link to an existing Shopify product by SKU without creating a new one
+  if (trackOnly) {
+    try {
+      // Search Shopify for a variant with this SKU
+      const searchResult = await client.request(
+        `query findBySku($query: String!) {
+          productVariants(first: 5, query: $query) {
+            edges {
+              node {
+                id
+                sku
+                inventoryItem { id }
+                product { id title }
+              }
+            }
+          }
+        }`,
+        { variables: { query: `sku:${sku}` } }
+      );
+
+      const variants = (searchResult as any).data?.productVariants?.edges || [];
+      const match = variants.find((e: any) => e.node.sku === sku);
+
+      if (!match) {
+        return NextResponse.json(
+          { error: `No existing Shopify product found with SKU "${sku}". Create it in Shopify first, or use Import instead.` },
+          { status: 404 }
+        );
+      }
+
+      const node = match.node;
+      const buyPrice = selectedOffer?.price || 0;
+
+      const tracked = await prisma.trackedProduct.create({
+        data: {
+          shop,
+          itscopeSku: sku,
+          itscopeProductId: itscopeProduct.productId,
+          shopifyProductId: node.product.id,
+          shopifyProductTitle: node.product.title || itscopeProduct.name || null,
+          shopifyVariantId: node.id,
+          shopifyInventoryItemId: node.inventoryItem?.id || null,
+          distributorId,
+          distributorName: distributorName || "",
+          distributorSku: selectedOffer?.supplierSKU || null,
+          productType: resolvedType,
+          shippingMode: shippingMode || "warehouse",
+          projectId: projectId || null,
+          importPrice: buyPrice,
+          lastPrice: buyPrice,
+          lastStock: selectedOffer?.stock,
+          lastStockSync: new Date(),
+        },
+      });
+
+      return NextResponse.json({ success: true, product: tracked, trackOnly: true });
+    } catch (error: any) {
+      console.error("Track existing error:", error?.message);
+      return NextResponse.json(
+        { error: error.message || "Failed to track existing product" },
+        { status: 500 }
+      );
+    }
+  }
+
+  // Full import: create product in Shopify
   try {
     // Build metafields array for Shopify
     const shopifyMetafields = metafields
