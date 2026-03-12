@@ -126,7 +126,7 @@ async function handleOrderUpdated(shop: string, order: any) {
   // Pre-compute deterministic order IDs for each distributor before any processing
   // This ensures IDs stay stable across webhook retries regardless of skip order
   const distributorEntries = Array.from(byDistributor.entries());
-  const baseOrderId = `${order.order_number}`;
+  const baseOrderId = (order.name || `${order.order_number}`).replace("#", "");
   const orderIdMap = new Map<string, string>();
   for (let i = 0; i < distributorEntries.length; i++) {
     const [distId] = distributorEntries[i];
