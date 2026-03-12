@@ -323,8 +323,8 @@ export function buildOrderXml(params: OrderParams): string {
         <ns2:PARTY_ID type="supplier_specific">${escapeXml(deliveryPartyId)}</ns2:PARTY_ID>
         <PARTY_ROLE>delivery</PARTY_ROLE>
         <ADDRESS>
-          <ns2:NAME>${escapeXml(params.deliveryCompany || params.buyerCompany)}</ns2:NAME>
-          <ns2:NAME2>${escapeXml(params.deliveryName || "")}</ns2:NAME2>${deliveryContactDetails}
+          <ns2:NAME>${escapeXml(params.deliveryCompany || params.buyerCompany)}</ns2:NAME>${params.deliveryName ? `
+          <ns2:NAME2>${escapeXml(params.deliveryName)}</ns2:NAME2>` : ""}${deliveryContactDetails}
           <ns2:STREET>${escapeXml(params.deliveryStreet || params.buyerStreet)}</ns2:STREET>
           <ns2:ZIP>${escapeXml(stripZipPrefix(params.deliveryZip || params.buyerZip))}</ns2:ZIP>
           <ns2:CITY>${escapeXml(params.deliveryCity || params.buyerCity)}</ns2:CITY>
