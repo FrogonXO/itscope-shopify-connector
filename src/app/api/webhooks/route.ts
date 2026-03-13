@@ -77,23 +77,30 @@ async function handleOrderUpdated(shop: string, order: any) {
     return;
   }
 
-  // Check which line items are ItScope-managed products
-  const lineItems = order.line_items || [];
+  // Only process UNFULFILLED line items — skip items already shipped
+  const allLineItems = order.line_items || [];
+  const lineItems = allLineItems.filter(
+    (item: any) => !item.fulfillment_status || item.fulfillment_status === "partial"
+  );
+
+  if (lineItems.length === 0) {
+    console.log(`Order ${order.id} has no unfulfilled line items, skipping`);
+    return;
+  }
+
+  console.log(`Order ${order.id} line items: ${allLineItems.length} total, ${lineItems.length} unfulfilled`);
+
+  // Match unfulfilled line items to tracked products by variant ID only
+  // (no product ID fallback — it causes wrong matches for multi-variant products)
   const shopifyVariantIds = lineItems
     .map((item: any) => String(item.variant_id))
     .filter((id: string) => id && id !== "null" && id !== "undefined");
-  const shopifyProductIds = lineItems
-    .map((item: any) => String(item.product_id))
-    .filter((id: string) => id && id !== "null" && id !== "undefined");
 
-  if (shopifyVariantIds.length === 0 && shopifyProductIds.length === 0) return;
+  if (shopifyVariantIds.length === 0) return;
 
-  // Try matching by variant first (correct for multi-variant products),
-  // fall back to product ID if no variant matches found
   const variantGids = shopifyVariantIds.map((id: string) => `gid://shopify/ProductVariant/${id}`);
-  const productGids = shopifyProductIds.map((id: string) => `gid://shopify/Product/${id}`);
 
-  let trackedProducts = await prisma.trackedProduct.findMany({
+  const trackedProducts = await prisma.trackedProduct.findMany({
     where: {
       shop,
       shopifyVariantId: { in: variantGids },
@@ -101,19 +108,7 @@ async function handleOrderUpdated(shop: string, order: any) {
     },
   });
 
-  if (trackedProducts.length === 0) {
-    // Fallback: match by product ID (for products without stored variant IDs)
-    trackedProducts = await prisma.trackedProduct.findMany({
-      where: {
-        shop,
-        shopifyProductId: { in: productGids },
-        active: true,
-      },
-    });
-    console.log(`Order ${order.id} variant match: 0, product fallback match: ${trackedProducts.length}`);
-  } else {
-    console.log(`Order ${order.id} matched ${trackedProducts.length} tracked products by variant`);
-  }
+  console.log(`Order ${order.id} matched ${trackedProducts.length} tracked products by variant`);
 
   if (trackedProducts.length === 0) return;
 
@@ -175,8 +170,7 @@ async function handleOrderUpdated(shop: string, order: any) {
       .map((tp) => {
         const lineItem = lineItems.find(
           (li: any) =>
-            (tp.shopifyVariantId && `gid://shopify/ProductVariant/${li.variant_id}` === tp.shopifyVariantId) ||
-            (tp.shopifyProductId && `gid://shopify/Product/${li.product_id}` === tp.shopifyProductId)
+            tp.shopifyVariantId && `gid://shopify/ProductVariant/${li.variant_id}` === tp.shopifyVariantId
         );
         if (!lineItem) return null;
         return {
@@ -215,7 +209,9 @@ async function handleOrderUpdated(shop: string, order: any) {
 
     // Apple-specific remarks: check if any line item in this group is from Apple
     const getVendor = (tp: typeof products[0]) => {
-      const li = lineItems.find((li: any) => `gid://shopify/Product/${li.product_id}` === tp.shopifyProductId);
+      const li = lineItems.find((li: any) =>
+        tp.shopifyVariantId && `gid://shopify/ProductVariant/${li.variant_id}` === tp.shopifyVariantId
+      );
       return (li?.vendor || "").toLowerCase();
     };
     const hasAppleProduct = products.some((p) => getVendor(p) === "apple");
