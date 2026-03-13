@@ -16,6 +16,10 @@ function log(logs: LogEntry[], level: LogEntry["level"], message: string) {
 }
 
 export async function POST(request: NextRequest) {
+  if (process.env.DISABLE_WEBHOOKS === "true") {
+    return NextResponse.json({ success: false, logs: [{ time: new Date().toISOString(), level: "error", message: "System is currently disabled (DISABLE_WEBHOOKS=true)" }] });
+  }
+
   const { shop, orderNumber } = await request.json();
   const logs: LogEntry[] = [];
 

@@ -7,6 +7,11 @@ import { getOfflineSession } from "@/lib/session-storage";
 import { getShopifyClient } from "@/lib/shopify";
 
 export async function POST(request: NextRequest) {
+  // Kill switch: set DISABLE_WEBHOOKS=true in Vercel env to stop all processing
+  if (process.env.DISABLE_WEBHOOKS === "true") {
+    return NextResponse.json({ ok: true, disabled: true });
+  }
+
   const topic = request.headers.get("x-shopify-topic");
   const shop = request.headers.get("x-shopify-shop-domain");
   const hmac = request.headers.get("x-shopify-hmac-sha256");
