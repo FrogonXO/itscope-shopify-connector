@@ -48,6 +48,8 @@ export async function POST(request: NextRequest) {
               id
               name
               displayFulfillmentStatus
+              displayFinancialStatus
+              cancelledAt
               createdAt
               email
               phone
@@ -91,6 +93,18 @@ export async function POST(request: NextRequest) {
     log(logs, "info", `Found order ${orderNode.name} (${orderNode.id})`);
     log(logs, "info", `Fulfillment status: ${orderNode.displayFulfillmentStatus}`);
 
+    // Block cancelled or refunded orders
+    const financialStatus = orderNode.displayFinancialStatus || "";
+    log(logs, "info", `Financial status: ${financialStatus}`);
+    if (orderNode.cancelledAt) {
+      log(logs, "error", "Order is CANCELLED — cannot resend");
+      return NextResponse.json({ success: false, logs });
+    }
+    if (["REFUNDED", "PARTIALLY_REFUNDED", "VOIDED"].includes(financialStatus)) {
+      log(logs, "error", `Order is ${financialStatus} — cannot resend to prevent double orders`);
+      return NextResponse.json({ success: false, logs });
+    }
+
     // Check fulfillment status — don't resend if already fulfilled
     if (orderNode.displayFulfillmentStatus === "FULFILLED") {
       log(logs, "error", "Order is already FULFILLED — cannot resend to prevent double orders");
@@ -113,26 +127,16 @@ export async function POST(request: NextRequest) {
     const lineItems = orderNode.lineItems.edges.map((e: any) => e.node);
     log(logs, "info", `Order has ${lineItems.length} line items`);
 
-    // Try matching by variant ID first, fall back to product ID
+    // Match by variant ID only (no product ID fallback — it causes wrong matches for multi-variant products)
     const variantGids = lineItems
       .map((li: any) => li.variant?.id)
       .filter(Boolean);
-    const productGids = lineItems
-      .map((li: any) => li.product?.id)
-      .filter(Boolean);
 
-    let trackedProducts = await prisma.trackedProduct.findMany({
+    const trackedProducts = await prisma.trackedProduct.findMany({
       where: { shop, shopifyVariantId: { in: variantGids }, active: true },
     });
 
-    if (trackedProducts.length === 0 && productGids.length > 0) {
-      trackedProducts = await prisma.trackedProduct.findMany({
-        where: { shop, shopifyProductId: { in: productGids }, active: true },
-      });
-      log(logs, "info", `Variant match: 0, product fallback match: ${trackedProducts.length}`);
-    } else {
-      log(logs, "info", `Matched ${trackedProducts.length} tracked products by variant`);
-    }
+    log(logs, "info", `Matched ${trackedProducts.length} tracked products by variant`);
 
     if (trackedProducts.length === 0) {
       log(logs, "error", "No tracked ItScope products found in this order");
@@ -193,17 +197,17 @@ export async function POST(request: NextRequest) {
         .map((tp) => {
           const lineItem = lineItems.find(
             (li: any) =>
-              (tp.shopifyVariantId && li.variant?.id === tp.shopifyVariantId) ||
-              (tp.shopifyProductId && li.product?.id === tp.shopifyProductId)
+              tp.shopifyVariantId && li.variant?.id === tp.shopifyVariantId
           );
           if (!lineItem) return null;
 
           if (!tp.distributorSku) {
-            log(logs, "error", `WARNING: No distributor SKU for ${tp.itscopeSku} — using manufacturer SKU as fallback. Consider relinking this product.`);
+            log(logs, "error", `SKIPPED: No distributor SKU for "${tp.itscopeSku}" — relink this product to fetch the distributor SKU before retrying.`);
+            return null;
           }
 
           return {
-            supplierPid: tp.distributorSku || tp.itscopeSku,
+            supplierPid: tp.distributorSku,
             itscopeProductId: tp.itscopeProductId || "",
             quantity: lineItem.quantity,
             description: lineItem.title || tp.itscopeSku,
@@ -244,16 +248,32 @@ export async function POST(request: NextRequest) {
 
       // Apple-specific remarks
       const getVendor = (tp: typeof products[0]) => {
-        const li = lineItems.find((li: any) => li.product?.id === tp.shopifyProductId);
+        const li = lineItems.find((li: any) => li.variant?.id === tp.shopifyVariantId);
         return (li?.vendor || "").toLowerCase();
       };
-      const hasAppleProduct = products.some((p) => getVendor(p) === "apple");
+      const hasAppleProduct = products.some((p) => p.productType !== "Warranty" && getVendor(p) === "apple");
       const hasAppleCare = hasAppleProduct && products.some(
         (p) => p.productType === "Warranty" && getVendor(p) === "apple"
       );
+
+      // Remove Apple warranty line items — they are noted in remarks instead
+      if (hasAppleCare) {
+        const warrantyIndices = orderLineItems
+          .map((li: any, idx: number) => {
+            const tp = products.find((p) => p.distributorSku === li.supplierPid);
+            return tp?.productType === "Warranty" && getVendor(tp) === "apple" ? idx : -1;
+          })
+          .filter((idx: number) => idx >= 0)
+          .reverse();
+        for (const idx of warrantyIndices) {
+          orderLineItems.splice(idx, 1);
+        }
+        log(logs, "info", "Apple warranty removed from line items — added to remarks as 'AppleCare+ dazubuchen'");
+      }
+
       const appleRemarks = "Universität Wien\nStudent\nUniversitätsring 1\n1010 Wien";
       const remarks = hasAppleCare
-        ? appleRemarks + "\nAppleCare+"
+        ? appleRemarks + "\nAppleCare+ dazubuchen"
         : hasAppleProduct
           ? appleRemarks
           : undefined;

@@ -60,6 +60,14 @@ export async function POST(request: NextRequest) {
 async function handleOrderUpdated(shop: string, order: any) {
   console.log(`Order ${order.id} updated from ${shop}`);
 
+  // Skip orders that are cancelled or in any refund state — these should never trigger new ItScope orders
+  const financialStatus = order.financial_status || "";
+  const cancelledAt = order.cancelled_at;
+  if (cancelledAt || ["refunded", "partially_refunded", "voided"].includes(financialStatus)) {
+    console.log(`Order ${order.id} is ${cancelledAt ? "cancelled" : financialStatus}, skipping`);
+    return;
+  }
+
   // Check if fulfillment holds have been released via Shopify GraphQL
   // If any fulfillment order is still ON_HOLD, skip — the order hasn't been verified yet
   const hasHold = await checkFulfillmentHolds(shop, order.id);
@@ -173,8 +181,12 @@ async function handleOrderUpdated(shop: string, order: any) {
             tp.shopifyVariantId && `gid://shopify/ProductVariant/${li.variant_id}` === tp.shopifyVariantId
         );
         if (!lineItem) return null;
+        if (!tp.distributorSku) {
+          console.error(`Order ${order.id}: No distributor SKU for "${tp.itscopeSku}" — skipping item. Relink product to fix.`);
+          return null;
+        }
         return {
-          supplierPid: tp.distributorSku || tp.itscopeSku,
+          supplierPid: tp.distributorSku,
           itscopeProductId: tp.itscopeProductId || "",
           quantity: lineItem.quantity,
           description: lineItem.title || tp.itscopeSku,
@@ -186,14 +198,26 @@ async function handleOrderUpdated(shop: string, order: any) {
       .filter(Boolean) as any[];
 
     if (orderLineItems.length === 0) {
-      await prisma.order.delete({ where: { id: dbOrder.id } });
+      // All items skipped (likely missing distributor SKU) — record the error
+      const skippedSkus = products.filter(p => !p.distributorSku).map(p => p.itscopeSku);
+      if (skippedSkus.length > 0) {
+        const errorMsg = `Distributor SKU missing for: ${skippedSkus.join(", ")}. Relink these products and resend manually.`;
+        await prisma.order.update({
+          where: { id: dbOrder.id },
+          data: { status: "error", errorMessage: errorMsg },
+        });
+        await addOrderComment(shop, `gid://shopify/Order/${order.id}`, `ItScope order ${ownOrderId} failed for ${products[0]?.distributorName || distributorId}: ${errorMsg}`);
+      } else {
+        await prisma.order.delete({ where: { id: dbOrder.id } });
+      }
       continue;
     }
 
     // Check if this order contains warranty/service items that need licensee info
+    // (Apple warranties are excluded from line items and noted in remarks instead,
+    //  but non-Apple warranties still need ENDCUSTOMER party)
     const hasServiceItems = orderLineItems.some((li: any) => li.productType);
 
-    // Extract end customer (licensee) info from Shopify order for warranty items
     const billingAddress = order.billing_address || shippingAddress;
     const customerParty = hasServiceItems ? {
       company: billingAddress.company || `${billingAddress.first_name || ""} ${billingAddress.last_name || ""}`.trim(),
@@ -214,13 +238,28 @@ async function handleOrderUpdated(shop: string, order: any) {
       );
       return (li?.vendor || "").toLowerCase();
     };
-    const hasAppleProduct = products.some((p) => getVendor(p) === "apple");
+    const hasAppleProduct = products.some((p) => p.productType !== "Warranty" && getVendor(p) === "apple");
     const hasAppleCare = hasAppleProduct && products.some(
       (p) => p.productType === "Warranty" && getVendor(p) === "apple"
     );
+
+    // Remove Apple warranty line items from the order — they are noted in remarks instead
+    if (hasAppleCare) {
+      const warrantyIndices = orderLineItems
+        .map((li: any, idx: number) => {
+          const tp = products.find((p) => p.distributorSku === li.supplierPid || p.itscopeSku === li.supplierPid);
+          return tp?.productType === "Warranty" && getVendor(tp) === "apple" ? idx : -1;
+        })
+        .filter((idx: number) => idx >= 0)
+        .reverse();
+      for (const idx of warrantyIndices) {
+        orderLineItems.splice(idx, 1);
+      }
+    }
+
     const appleRemarks = "Universität Wien\nStudent\nUniversitätsring 1\n1010 Wien";
     const remarks = hasAppleCare
-      ? appleRemarks + "\nAppleCare+"
+      ? appleRemarks + "\nAppleCare+ dazubuchen"
       : hasAppleProduct
         ? appleRemarks
         : undefined;
