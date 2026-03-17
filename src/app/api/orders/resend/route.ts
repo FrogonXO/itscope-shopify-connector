@@ -69,7 +69,8 @@ export async function POST(request: NextRequest) {
                     title
                     quantity
                     vendor
-                    variant { id }
+                    sku
+                    variant { id sku }
                     product { id }
                   }
                 }
@@ -138,14 +139,77 @@ export async function POST(request: NextRequest) {
 
     log(logs, "info", `Matched ${trackedProducts.length} tracked products by variant`);
 
-    if (trackedProducts.length === 0) {
-      log(logs, "error", "No tracked ItScope products found in this order");
+    // For unmatched line items, check ItScope for Target Distribution availability (even "Nicht verfügbar")
+    const trackedVariantGids = new Set(trackedProducts.map((tp) => tp.shopifyVariantId));
+    const unmatchedLineItems = lineItems.filter(
+      (li: any) => li.variant?.id && !trackedVariantGids.has(li.variant.id)
+    );
+
+    // Synthetic tracked product entries for unmatched items found on Target
+    const targetFallbackProducts: typeof trackedProducts = [];
+
+    if (unmatchedLineItems.length > 0) {
+      log(logs, "info", `${unmatchedLineItems.length} unmatched line items — checking ItScope for Target Distribution...`);
+
+      for (const li of unmatchedLineItems) {
+        const sku = li.sku || li.variant?.sku;
+        if (!sku) {
+          log(logs, "info", `Skipping "${li.title}" — no SKU available`);
+          continue;
+        }
+
+        log(logs, "info", `Searching ItScope for SKU "${sku}"...`);
+        const itscopeProduct = await searchProductBySku(sku);
+        if (!itscopeProduct) {
+          log(logs, "info", `SKU "${sku}" not found on ItScope`);
+          continue;
+        }
+
+        // Find Target Distribution offer (regardless of availability status)
+        const targetOffer = itscopeProduct.offers.find(
+          (o) => o.distributorName.toLowerCase().includes("target")
+        );
+
+        if (!targetOffer) {
+          log(logs, "info", `SKU "${sku}" found on ItScope but no Target Distribution offer`);
+          continue;
+        }
+
+        log(logs, "info", `Found Target offer for "${sku}": SKU=${targetOffer.supplierSKU}, status="${targetOffer.stockStatusText}", price=${targetOffer.price}`);
+
+        // Create a synthetic tracked product entry for this unmatched item
+        targetFallbackProducts.push({
+          id: `target-fallback-${sku}`,
+          shop,
+          itscopeSku: sku,
+          itscopeProductId: itscopeProduct.productId,
+          shopifyProductId: li.product?.id || "",
+          shopifyVariantId: li.variant?.id || "",
+          shopifyProductTitle: li.title || null,
+          distributorId: targetOffer.distributorId,
+          distributorName: targetOffer.distributorName,
+          distributorSku: targetOffer.supplierSKU,
+          shippingMode: "dropship",
+          productType: null,
+          projectId: null,
+          lastPrice: targetOffer.price || null,
+          active: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as any);
+      }
+    }
+
+    const allProducts = [...trackedProducts, ...targetFallbackProducts];
+
+    if (allProducts.length === 0) {
+      log(logs, "error", "No tracked ItScope products found in this order and no Target fallback available");
       return NextResponse.json({ success: false, logs });
     }
 
     // Group by distributor
     const byDistributor = new Map<string, typeof trackedProducts>();
-    for (const tp of trackedProducts) {
+    for (const tp of allProducts) {
       const existing = byDistributor.get(tp.distributorId) || [];
       existing.push(tp);
       byDistributor.set(tp.distributorId, existing);
