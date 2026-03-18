@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        log(logs, "info", `Found Target offer for "${sku}": SKU=${targetOffer.supplierSKU}, status="${targetOffer.stockStatusText}", price=${targetOffer.price}`);
+        log(logs, "info", `Found Target offer for "${sku}": SKU=${targetOffer.supplierSKU}, status="${targetOffer.stockStatusText}", price=${targetOffer.price}, priceCalc=${targetOffer.priceCalc}, projects=${JSON.stringify(targetOffer.projects)}`);
 
         // Create a synthetic tracked product entry for this unmatched item
         targetFallbackProducts.push({
