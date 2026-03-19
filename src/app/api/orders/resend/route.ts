@@ -157,11 +157,20 @@ export async function POST(request: NextRequest) {
 
     // Synthetic tracked product entries for unmatched items found on Target
     const targetFallbackProducts: typeof trackedProducts = [];
+    // Track if any unmatched AppleCare items are found (for remarks)
+    let hasUnmatchedAppleCare = false;
 
     if (unmatchedLineItems.length > 0) {
       log(logs, "info", `${unmatchedLineItems.length} unmatched line items — checking ItScope for Target Distribution...`);
 
       for (const li of unmatchedLineItems) {
+        // AppleCare warranties are not ordered as line items — noted in remarks instead
+        if ((li.title || "").toLowerCase().includes("applecare")) {
+          hasUnmatchedAppleCare = true;
+          log(logs, "info", `"${li.title}" is AppleCare — will add to remarks, not ordered as line item`);
+          continue;
+        }
+
         const sku = li.sku || li.variant?.sku;
         if (!sku) {
           log(logs, "info", `Skipping "${li.title}" — no SKU available`);
@@ -332,12 +341,12 @@ export async function POST(request: NextRequest) {
         return (li?.vendor || "").toLowerCase();
       };
       const hasAppleProduct = products.some((p) => p.productType !== "Warranty" && getVendor(p) === "apple");
-      const hasAppleCare = hasAppleProduct && products.some(
+      const hasAppleCareTracked = hasAppleProduct && products.some(
         (p) => p.productType === "Warranty" && getVendor(p) === "apple"
       );
 
-      // Remove Apple warranty line items — they are noted in remarks instead
-      if (hasAppleCare) {
+      // Remove tracked Apple warranty line items — they are noted in remarks instead
+      if (hasAppleCareTracked) {
         const warrantyIndices = orderLineItems
           .map((li: any, idx: number) => {
             const tp = products.find((p) => p.distributorSku === li.supplierPid);
@@ -350,6 +359,9 @@ export async function POST(request: NextRequest) {
         }
         log(logs, "info", "Apple warranty removed from line items — added to remarks as 'AppleCare+ dazubuchen'");
       }
+
+      // AppleCare detected either from tracked products or from unmatched line items
+      const hasAppleCare = hasAppleCareTracked || (hasAppleProduct && hasUnmatchedAppleCare);
 
       const appleRemarks = "Universität Wien\nStudent\nUniversitätsring 1\n1010 Wien";
       const remarks = hasAppleCare
