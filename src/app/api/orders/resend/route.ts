@@ -175,13 +175,18 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Find Target Distribution offer (regardless of availability status)
+        // Find Target Distribution offer with exact SKU match
         const targetOffer = itscopeProduct.offers.find(
-          (o) => o.distributorName.toLowerCase().includes("target")
+          (o) => o.distributorName.toLowerCase().includes("target") && o.supplierSKU === sku
         );
 
         if (!targetOffer) {
-          log(logs, "info", `SKU "${sku}" found on ItScope but no Target Distribution offer`);
+          log(logs, "error", `SKU "${sku}" found on ItScope but no Target Distribution offer with matching supplierSKU. Available Target offers: ${itscopeProduct.offers.filter(o => o.distributorName.toLowerCase().includes("target")).map(o => `${o.supplierSKU} (price=${o.price})`).join(", ") || "none"}`);
+          continue;
+        }
+
+        if (!targetOffer.price || targetOffer.price <= 0) {
+          log(logs, "error", `Target offer for "${sku}" has no price (price=${targetOffer.price}). Check ItScope individual pricing for Target Distribution.`);
           continue;
         }
 
