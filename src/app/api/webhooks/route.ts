@@ -68,12 +68,15 @@ async function handleOrderUpdated(shop: string, order: any) {
     return;
   }
 
-  // Check if fulfillment holds have been released via Shopify GraphQL
-  // If any fulfillment order is still ON_HOLD, skip — the order hasn't been verified yet
-  const hasHold = await checkFulfillmentHolds(shop, order.id);
+  // Check fulfillment holds and delivery method via Shopify GraphQL
+  const { hasHold, isLocalPickup } = await checkFulfillmentInfo(shop, order.id);
   if (hasHold) {
     console.log(`Order ${order.id} still on hold, skipping`);
     return;
+  }
+
+  if (isLocalPickup) {
+    console.log(`Order ${order.id} is local pickup — will use warehouse (company) address for delivery`);
   }
 
   // Guard against race condition: orders/updated fires before the Flow puts the order on hold.
@@ -150,7 +153,8 @@ async function handleOrderUpdated(shop: string, order: any) {
     // Claim this order slot in the DB with "pending" status BEFORE sending to ItScope.
     // The unique constraint [shop, shopifyOrderId, distributorId] acts as a lock —
     // if a concurrent webhook already claimed it, the create will throw and we skip.
-    const isDropship = products.some((p) => p.shippingMode === "dropship");
+    // Local pickup → always warehouse (deliver to our company address, not customer)
+    const isDropship = isLocalPickup ? false : products.some((p) => p.shippingMode === "dropship");
     let dbOrder;
     try {
       dbOrder = await prisma.order.create({
@@ -339,18 +343,21 @@ async function handleOrderUpdated(shop: string, order: any) {
   }
 }
 
-async function checkFulfillmentHolds(shop: string, orderId: number): Promise<boolean> {
+async function checkFulfillmentInfo(shop: string, orderId: number): Promise<{ hasHold: boolean; isLocalPickup: boolean }> {
   try {
     const session = await getOfflineSession(shop);
-    if (!session) return true; // If no session, assume on hold (safe default)
+    if (!session) return { hasHold: true, isLocalPickup: false };
 
     const client = await getShopifyClient(shop, session.accessToken!);
     const result = await client.request(
-      `query fulfillmentHolds($orderId: ID!) {
+      `query fulfillmentInfo($orderId: ID!) {
         order(id: $orderId) {
           fulfillmentOrders(first: 10) {
             nodes {
               status
+              deliveryMethod {
+                methodType
+              }
             }
           }
         }
@@ -364,12 +371,16 @@ async function checkFulfillmentHolds(shop: string, orderId: number): Promise<boo
 
     const fulfillmentOrders = (result as any).data?.order?.fulfillmentOrders?.nodes || [];
     const statuses = fulfillmentOrders.map((fo: any) => fo.status);
-    console.log(`Fulfillment hold check for order ${orderId}: statuses=${JSON.stringify(statuses)}`);
-    // If any fulfillment order is ON_HOLD, the order hasn't been released yet
-    return fulfillmentOrders.some((fo: any) => fo.status === "ON_HOLD");
+    const deliveryMethods = fulfillmentOrders.map((fo: any) => fo.deliveryMethod?.methodType).filter(Boolean);
+    console.log(`Fulfillment info for order ${orderId}: statuses=${JSON.stringify(statuses)}, deliveryMethods=${JSON.stringify(deliveryMethods)}`);
+
+    const hasHold = fulfillmentOrders.some((fo: any) => fo.status === "ON_HOLD");
+    const isLocalPickup = deliveryMethods.some((m: string) => m === "PICK_UP" || m === "LOCAL");
+
+    return { hasHold, isLocalPickup };
   } catch (error) {
-    console.error("Failed to check fulfillment holds:", error);
-    return true; // On error, assume on hold (safe default — don't send premature orders)
+    console.error("Failed to check fulfillment info:", error);
+    return { hasHold: true, isLocalPickup: false };
   }
 }
 

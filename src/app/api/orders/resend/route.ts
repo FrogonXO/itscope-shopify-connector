@@ -76,7 +76,10 @@ export async function POST(request: NextRequest) {
                 }
               }
               fulfillmentOrders(first: 10) {
-                nodes { status }
+                nodes {
+                  status
+                  deliveryMethod { methodType }
+                }
               }
             }
           }
@@ -112,12 +115,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, logs });
     }
 
-    // Check fulfillment holds
-    const holdStatuses = orderNode.fulfillmentOrders?.nodes?.map((fo: any) => fo.status) || [];
+    // Check fulfillment holds and delivery method
+    const fulfillmentNodes = orderNode.fulfillmentOrders?.nodes || [];
+    const holdStatuses = fulfillmentNodes.map((fo: any) => fo.status);
+    const deliveryMethods = fulfillmentNodes.map((fo: any) => fo.deliveryMethod?.methodType).filter(Boolean);
     log(logs, "info", `Fulfillment order statuses: ${JSON.stringify(holdStatuses)}`);
     if (holdStatuses.includes("ON_HOLD")) {
       log(logs, "error", "Order is still ON_HOLD — waiting for verification release");
       return NextResponse.json({ success: false, logs });
+    }
+
+    const isLocalPickup = deliveryMethods.some((m: string) => m === "PICK_UP" || m === "LOCAL");
+    if (isLocalPickup) {
+      log(logs, "info", "Local pickup order — will use warehouse (company) address for delivery");
     }
 
     // Extract numeric order ID from GID
@@ -243,7 +253,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Create new pending record
-      const isDropship = products.some((p) => p.shippingMode === "dropship");
+      // Local pickup → always warehouse (deliver to our company address, not customer)
+      const isDropship = isLocalPickup ? false : products.some((p) => p.shippingMode === "dropship");
       const dbOrder = await prisma.order.create({
         data: {
           shop,
