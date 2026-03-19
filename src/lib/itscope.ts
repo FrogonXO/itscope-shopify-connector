@@ -107,6 +107,10 @@ function parseProduct(product: any, sku: string): ItScopeProduct {
   if (supplierItems) {
     const items = Array.isArray(supplierItems) ? supplierItems : [supplierItems];
     for (const item of items) {
+      // Log raw supplier item data for Target to debug pricing
+      if (String(item.supplierName || "").toLowerCase().includes("target")) {
+        console.log("Raw Target supplierItem:", JSON.stringify(item));
+      }
       // Skip refurbished/bulk items and items with zero price
       const condition = item.conditionName || "";
       const price = parseFloat(item.price || "0");
