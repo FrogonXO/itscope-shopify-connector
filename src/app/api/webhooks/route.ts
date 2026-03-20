@@ -68,8 +68,13 @@ async function handleOrderUpdated(shop: string, order: any) {
     return;
   }
 
-  // Check fulfillment holds and delivery method via Shopify GraphQL
-  const { hasHold, isLocalPickup } = await checkFulfillmentInfo(shop, order.id);
+  // Check fulfillment holds, delivery method, and live financial status via Shopify GraphQL
+  // (webhook payload financial_status can be stale during refund processing)
+  const { hasHold, isLocalPickup, isCancelledOrRefunded } = await checkFulfillmentInfo(shop, order.id);
+  if (isCancelledOrRefunded) {
+    console.log(`Order ${order.id} is cancelled/refunded (confirmed via GraphQL), skipping`);
+    return;
+  }
   if (hasHold) {
     console.log(`Order ${order.id} still on hold, skipping`);
     return;
@@ -343,15 +348,17 @@ async function handleOrderUpdated(shop: string, order: any) {
   }
 }
 
-async function checkFulfillmentInfo(shop: string, orderId: number): Promise<{ hasHold: boolean; isLocalPickup: boolean }> {
+async function checkFulfillmentInfo(shop: string, orderId: number): Promise<{ hasHold: boolean; isLocalPickup: boolean; isCancelledOrRefunded: boolean }> {
   try {
     const session = await getOfflineSession(shop);
-    if (!session) return { hasHold: true, isLocalPickup: false };
+    if (!session) return { hasHold: true, isLocalPickup: false, isCancelledOrRefunded: false };
 
     const client = await getShopifyClient(shop, session.accessToken!);
     const result = await client.request(
       `query fulfillmentInfo($orderId: ID!) {
         order(id: $orderId) {
+          displayFinancialStatus
+          cancelledAt
           fulfillmentOrders(first: 10) {
             nodes {
               status
@@ -369,18 +376,23 @@ async function checkFulfillmentInfo(shop: string, orderId: number): Promise<{ ha
       }
     );
 
-    const fulfillmentOrders = (result as any).data?.order?.fulfillmentOrders?.nodes || [];
+    const orderData = (result as any).data?.order;
+    const fulfillmentOrders = orderData?.fulfillmentOrders?.nodes || [];
     const statuses = fulfillmentOrders.map((fo: any) => fo.status);
     const deliveryMethods = fulfillmentOrders.map((fo: any) => fo.deliveryMethod?.methodType).filter(Boolean);
-    console.log(`Fulfillment info for order ${orderId}: statuses=${JSON.stringify(statuses)}, deliveryMethods=${JSON.stringify(deliveryMethods)}`);
+    const financialStatus = orderData?.displayFinancialStatus || "";
+    const cancelledAt = orderData?.cancelledAt;
+
+    console.log(`Fulfillment info for order ${orderId}: statuses=${JSON.stringify(statuses)}, deliveryMethods=${JSON.stringify(deliveryMethods)}, financialStatus=${financialStatus}, cancelledAt=${cancelledAt}`);
 
     const hasHold = fulfillmentOrders.some((fo: any) => fo.status === "ON_HOLD");
     const isLocalPickup = deliveryMethods.some((m: string) => m === "PICK_UP" || m === "LOCAL");
+    const isCancelledOrRefunded = !!cancelledAt || ["REFUNDED", "PARTIALLY_REFUNDED", "VOIDED"].includes(financialStatus);
 
-    return { hasHold, isLocalPickup };
+    return { hasHold, isLocalPickup, isCancelledOrRefunded };
   } catch (error) {
     console.error("Failed to check fulfillment info:", error);
-    return { hasHold: true, isLocalPickup: false };
+    return { hasHold: true, isLocalPickup: false, isCancelledOrRefunded: false };
   }
 }
 
