@@ -93,6 +93,14 @@ async function handleOrderUpdated(shop: string, order: any) {
     return;
   }
 
+  // Skip orders older than 2 days — if they were never processed, something is wrong
+  // (e.g. refunded, cancelled, stuck). Use manual resend if needed.
+  const twoDays = 2 * 24 * 60 * 60 * 1000;
+  if (orderAge > twoDays) {
+    console.log(`Order ${order.id} is ${Math.round(orderAge / 86_400_000)} days old, skipping — use manual resend if needed`);
+    return;
+  }
+
   // Only process UNFULFILLED line items — skip items already shipped
   const allLineItems = order.line_items || [];
   const lineItems = allLineItems.filter(
