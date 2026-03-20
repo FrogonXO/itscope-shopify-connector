@@ -359,6 +359,9 @@ async function checkFulfillmentInfo(shop: string, orderId: number): Promise<{ ha
         order(id: $orderId) {
           displayFinancialStatus
           cancelledAt
+          refunds(first: 1) {
+            id
+          }
           fulfillmentOrders(first: 10) {
             nodes {
               status
@@ -382,12 +385,13 @@ async function checkFulfillmentInfo(shop: string, orderId: number): Promise<{ ha
     const deliveryMethods = fulfillmentOrders.map((fo: any) => fo.deliveryMethod?.methodType).filter(Boolean);
     const financialStatus = orderData?.displayFinancialStatus || "";
     const cancelledAt = orderData?.cancelledAt;
+    const hasRefunds = (orderData?.refunds || []).length > 0;
 
-    console.log(`Fulfillment info for order ${orderId}: statuses=${JSON.stringify(statuses)}, deliveryMethods=${JSON.stringify(deliveryMethods)}, financialStatus=${financialStatus}, cancelledAt=${cancelledAt}`);
+    console.log(`Fulfillment info for order ${orderId}: statuses=${JSON.stringify(statuses)}, deliveryMethods=${JSON.stringify(deliveryMethods)}, financialStatus=${financialStatus}, cancelledAt=${cancelledAt}, hasRefunds=${hasRefunds}`);
 
     const hasHold = fulfillmentOrders.some((fo: any) => fo.status === "ON_HOLD");
     const isLocalPickup = deliveryMethods.some((m: string) => m === "PICK_UP" || m === "LOCAL");
-    const isCancelledOrRefunded = !!cancelledAt || ["REFUNDED", "PARTIALLY_REFUNDED", "VOIDED"].includes(financialStatus);
+    const isCancelledOrRefunded = !!cancelledAt || hasRefunds || ["REFUNDED", "PARTIALLY_REFUNDED", "VOIDED"].includes(financialStatus);
 
     return { hasHold, isLocalPickup, isCancelledOrRefunded };
   } catch (error) {
