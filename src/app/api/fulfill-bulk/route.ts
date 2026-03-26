@@ -88,7 +88,13 @@ export async function POST(request: NextRequest) {
       // Group by tracking number — each tracking number gets its own fulfillment
       const byTracking = new Map<string, BulkFulfillRow[]>();
       for (const row of orderRows) {
-        const key = row.sendungsnummer.trim();
+        // DPD Austria tracking numbers are 14 digits — fix missing leading zero
+        let trackingNum = row.sendungsnummer.trim();
+        if (/^\d{13}$/.test(trackingNum)) {
+          trackingNum = "0" + trackingNum;
+        }
+        row.sendungsnummer = trackingNum;
+        const key = trackingNum;
         const existing = byTracking.get(key) || [];
         existing.push(row);
         byTracking.set(key, existing);
