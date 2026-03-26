@@ -671,9 +671,11 @@ export default function AppPage() {
       const text = e.target?.result as string;
       const lines = text.split("\n").filter((l) => l.trim());
       if (lines.length < 2) return;
-      // Skip header row, parse tab-separated values
+      // Detect delimiter: semicolon or tab
+      const delimiter = lines[0].includes(";") ? ";" : "\t";
+      // Skip header row, parse values
       const rows = lines.slice(1).map((line, idx) => {
-        const cols = line.split("\t");
+        const cols = line.split(delimiter);
         return {
           kundenbestellnummer: (cols[0] || "").trim(),
           sendungsnummer: (cols[5] || "").trim(),
