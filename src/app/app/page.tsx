@@ -375,6 +375,11 @@ export default function AppPage() {
   const [resendLoading, setResendLoading] = useState(false);
   const [resendLogs, setResendLogs] = useState<{ time: string; level: string; message: string }[]>([]);
 
+  // Bulk fulfill state
+  const [bulkFulfillRows, setBulkFulfillRows] = useState<{ kundenbestellnummer: string; sendungsnummer: string; herstellerArtikelnummer: string; stueck: number; artikelbezeichnung: string; seriennummer: string; rowIndex: number }[]>([]);
+  const [bulkFulfilling, setBulkFulfilling] = useState(false);
+  const [bulkFulfillResults, setBulkFulfillResults] = useState<{ rowIndex: number; orderName: string; sku: string; status: string; message: string }[]>([]);
+
   // Grouped view state
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -657,6 +662,52 @@ export default function AppPage() {
     }
   }, [shop, resendOrderNumber]);
 
+  const handleBulkFulfillFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setBulkFulfillResults([]);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const lines = text.split("\n").filter((l) => l.trim());
+      if (lines.length < 2) return;
+      // Skip header row, parse tab-separated values
+      const rows = lines.slice(1).map((line, idx) => {
+        const cols = line.split("\t");
+        return {
+          kundenbestellnummer: (cols[0] || "").trim(),
+          sendungsnummer: (cols[5] || "").trim(),
+          herstellerArtikelnummer: (cols[10] || "").trim(),
+          stueck: parseInt(cols[11] || "1", 10) || 1,
+          artikelbezeichnung: (cols[13] || "").trim(),
+          seriennummer: (cols[14] || "").trim(),
+          rowIndex: idx,
+        };
+      }).filter((r) => r.kundenbestellnummer && r.herstellerArtikelnummer);
+      setBulkFulfillRows(rows);
+    };
+    reader.readAsText(file);
+  }, []);
+
+  const handleBulkFulfill = useCallback(async () => {
+    if (bulkFulfillRows.length === 0) return;
+    setBulkFulfilling(true);
+    setBulkFulfillResults([]);
+    try {
+      const res = await fetch("/api/fulfill-bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shop, rows: bulkFulfillRows }),
+      });
+      const data = await res.json();
+      setBulkFulfillResults(data.results || []);
+    } catch (e: any) {
+      setBulkFulfillResults([{ rowIndex: -1, orderName: "", sku: "", status: "error", message: `Request failed: ${e.message}` }]);
+    } finally {
+      setBulkFulfilling(false);
+    }
+  }, [shop, bulkFulfillRows]);
+
   const handleUpdateProjectId = useCallback(
     async (id: number, newProjectId: string) => {
       try {
@@ -932,6 +983,7 @@ export default function AppPage() {
   const tabs = [
     { id: "products", content: "Products" },
     { id: "orders", content: "Resend Order" },
+    { id: "bulk-fulfill", content: "Bulk Fulfill Apple" },
   ];
 
   // --- Render a single product row inside the grouped table ---
@@ -1080,6 +1132,100 @@ export default function AppPage() {
                           {entry.message}
                         </div>
                       ))}
+                    </div>
+                  )}
+                </BlockStack>
+              </Card>
+            </Layout.Section>
+          </Layout>
+        )}
+
+        {selectedTab === 2 && (
+          <Layout>
+            <Layout.Section>
+              <Card>
+                <BlockStack gap="400">
+                  <Text as="h2" variant="headingMd">
+                    Bulk Fulfill Apple Orders
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    Upload a tab-separated CSV from Target Distribution to fulfill Apple orders with DPD tracking.
+                  </Text>
+                  <input
+                    type="file"
+                    accept=".csv,.tsv,.txt"
+                    onChange={handleBulkFulfillFileUpload}
+                    style={{ marginBottom: 8 }}
+                  />
+                  {bulkFulfillRows.length > 0 && (
+                    <>
+                      <Text as="p" variant="bodySm">
+                        {bulkFulfillRows.length} rows parsed. Preview:
+                      </Text>
+                      <div style={{ overflowX: "auto", maxHeight: 400, overflowY: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ borderBottom: "2px solid #e1e3e5", textAlign: "left" }}>
+                              <th style={{ padding: "8px 12px" }}>#</th>
+                              <th style={{ padding: "8px 12px" }}>Order</th>
+                              <th style={{ padding: "8px 12px" }}>SKU</th>
+                              <th style={{ padding: "8px 12px" }}>Article</th>
+                              <th style={{ padding: "8px 12px" }}>Qty</th>
+                              <th style={{ padding: "8px 12px" }}>Tracking</th>
+                              <th style={{ padding: "8px 12px" }}>Serial</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {bulkFulfillRows.map((row) => (
+                              <tr key={row.rowIndex} style={{ borderBottom: "1px solid #e1e3e5" }}>
+                                <td style={{ padding: "6px 12px" }}>{row.rowIndex + 1}</td>
+                                <td style={{ padding: "6px 12px" }}>{row.kundenbestellnummer}</td>
+                                <td style={{ padding: "6px 12px", fontFamily: "monospace" }}>{row.herstellerArtikelnummer}</td>
+                                <td style={{ padding: "6px 12px" }}>{row.artikelbezeichnung}</td>
+                                <td style={{ padding: "6px 12px" }}>{row.stueck}</td>
+                                <td style={{ padding: "6px 12px", fontFamily: "monospace" }}>{row.sendungsnummer}</td>
+                                <td style={{ padding: "6px 12px", fontFamily: "monospace" }}>{row.seriennummer}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <Button
+                        variant="primary"
+                        onClick={handleBulkFulfill}
+                        loading={bulkFulfilling}
+                      >
+                        {`Fulfill All (${bulkFulfillRows.length} items)`}
+                      </Button>
+                    </>
+                  )}
+                  {bulkFulfillResults.length > 0 && (
+                    <div style={{
+                      background: "#1a1a2e",
+                      borderRadius: 8,
+                      padding: 16,
+                      maxHeight: 400,
+                      overflowY: "auto",
+                      fontFamily: "monospace",
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                    }}>
+                      {bulkFulfillResults.map((r, i) => (
+                        <div key={i} style={{
+                          color: r.status === "error" ? "#ff6b6b" : r.status === "success" ? "#51cf66" : "#ffd43b",
+                        }}>
+                          <span style={{ color: "#868e96" }}>#{r.rowIndex + 1}</span>{" "}
+                          <span style={{ fontWeight: 600 }}>
+                            [{r.status.toUpperCase()}]
+                          </span>{" "}
+                          {r.orderName} — {r.sku}: {r.message}
+                        </div>
+                      ))}
+                      <div style={{ marginTop: 12, color: "#868e96", borderTop: "1px solid #2d2d44", paddingTop: 8 }}>
+                        {bulkFulfillResults.filter((r) => r.status === "success").length} succeeded,{" "}
+                        {bulkFulfillResults.filter((r) => r.status === "error").length} failed,{" "}
+                        {bulkFulfillResults.filter((r) => r.status === "skipped").length} skipped
+                      </div>
                     </div>
                   )}
                 </BlockStack>
