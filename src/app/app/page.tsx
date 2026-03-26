@@ -689,7 +689,7 @@ export default function AppPage() {
     reader.readAsText(file);
   }, []);
 
-  const handleBulkFulfill = useCallback(async () => {
+  const handleBulkFulfill = useCallback(async (dryRun: boolean) => {
     if (bulkFulfillRows.length === 0) return;
     setBulkFulfilling(true);
     setBulkFulfillResults([]);
@@ -697,7 +697,7 @@ export default function AppPage() {
       const res = await fetch("/api/fulfill-bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shop, rows: bulkFulfillRows }),
+        body: JSON.stringify({ shop, rows: bulkFulfillRows, dryRun }),
       });
       const data = await res.json();
       setBulkFulfillResults(data.results || []);
@@ -1190,13 +1190,21 @@ export default function AppPage() {
                           </tbody>
                         </table>
                       </div>
-                      <Button
-                        variant="primary"
-                        onClick={handleBulkFulfill}
-                        loading={bulkFulfilling}
-                      >
-                        {`Fulfill All (${bulkFulfillRows.length} items)`}
-                      </Button>
+                      <InlineStack gap="300">
+                        <Button
+                          onClick={() => handleBulkFulfill(true)}
+                          loading={bulkFulfilling}
+                        >
+                          {`Dry Run (${bulkFulfillRows.length} items)`}
+                        </Button>
+                        <Button
+                          variant="primary"
+                          onClick={() => handleBulkFulfill(false)}
+                          loading={bulkFulfilling}
+                        >
+                          {`Fulfill All (${bulkFulfillRows.length} items)`}
+                        </Button>
+                      </InlineStack>
                     </>
                   )}
                   {bulkFulfillResults.length > 0 && (

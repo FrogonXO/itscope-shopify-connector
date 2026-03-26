@@ -21,7 +21,7 @@ interface RowResult {
 }
 
 export async function POST(request: NextRequest) {
-  const { shop, rows } = await request.json();
+  const { shop, rows, dryRun } = await request.json();
 
   if (!shop || !rows || !Array.isArray(rows) || rows.length === 0) {
     return NextResponse.json({ error: "Missing shop or rows" }, { status: 400 });
@@ -147,6 +147,16 @@ export async function POST(request: NextRequest) {
 
         if (lineItemsToFulfill.length === 0) continue;
 
+        if (dryRun) {
+          // Dry run — report what would happen without actually fulfilling
+          for (const row of trackingRows) {
+            if (!results.some((r) => r.rowIndex === row.rowIndex)) {
+              results.push({ rowIndex: row.rowIndex, orderName, sku: row.herstellerArtikelnummer, status: "success", message: `[DRY RUN] Would fulfill with DPD tracking ${trackingNumber}${row.seriennummer ? `, serial: ${row.seriennummer}` : ""}` });
+            }
+          }
+          continue;
+        }
+
         // Create fulfillment with DPD tracking
         const fulfillmentResult = await client.request(
           `mutation fulfillmentCreate($fulfillment: FulfillmentInput!) {
@@ -197,8 +207,8 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Write serial numbers to order metafield
-      if (serialNumbers.length > 0) {
+      // Write serial numbers to order metafield (skip in dry run)
+      if (serialNumbers.length > 0 && !dryRun) {
         try {
           // Read existing metafield value first
           const metafieldResult = await client.request(
