@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
                   nodes {
                     id
                     status
+                    deliveryMethod { methodType }
                     lineItems(first: 50) {
                       nodes {
                         id
@@ -81,6 +82,16 @@ export async function POST(request: NextRequest) {
       if (!orderNode) {
         for (const row of orderRows) {
           results.push({ rowIndex: row.rowIndex, orderName, sku: row.herstellerArtikelnummer, status: "error", message: `Order "${orderName}" not found in Shopify` });
+        }
+        continue;
+      }
+
+      // Skip pickup orders — they should not get a shipping notification
+      const deliveryMethods = (orderNode.fulfillmentOrders?.nodes || []).map((fo: any) => fo.deliveryMethod?.methodType).filter(Boolean);
+      const isPickup = deliveryMethods.some((m: string) => m === "PICK_UP" || m === "LOCAL");
+      if (isPickup) {
+        for (const row of orderRows) {
+          results.push({ rowIndex: row.rowIndex, orderName, sku: row.herstellerArtikelnummer, status: "skipped", message: `Order skipped — pickup from store` });
         }
         continue;
       }
