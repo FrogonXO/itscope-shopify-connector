@@ -6,6 +6,10 @@ import { getShopifyClient } from "@/lib/shopify";
 
 // Cron job: Check ItScope order statuses and update Shopify
 export async function GET(request: NextRequest) {
+  if (process.env.DISABLE_ITSCOPE_CONNECTION === "true") {
+    return NextResponse.json({ ok: true, disabled: true });
+  }
+
   // Verify cron secret
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {

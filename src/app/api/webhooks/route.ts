@@ -7,8 +7,8 @@ import { getOfflineSession } from "@/lib/session-storage";
 import { getShopifyClient } from "@/lib/shopify";
 
 export async function POST(request: NextRequest) {
-  // Kill switch: set DISABLE_WEBHOOKS=true in Vercel env to stop all processing
-  if (process.env.DISABLE_WEBHOOKS === "true") {
+  // Kill switch: set DISABLE_ITSCOPE_CONNECTION=true to stop ALL ItScope calls
+  if (process.env.DISABLE_ITSCOPE_CONNECTION === "true" || process.env.DISABLE_WEBHOOKS === "true") {
     return NextResponse.json({ ok: true, disabled: true });
   }
 

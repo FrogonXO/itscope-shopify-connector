@@ -16,8 +16,8 @@ function log(logs: LogEntry[], level: LogEntry["level"], message: string) {
 }
 
 export async function POST(request: NextRequest) {
-  if (process.env.DISABLE_WEBHOOKS === "true") {
-    return NextResponse.json({ success: false, logs: [{ time: new Date().toISOString(), level: "error", message: "System is currently disabled (DISABLE_WEBHOOKS=true)" }] });
+  if (process.env.DISABLE_ITSCOPE_CONNECTION === "true" || process.env.DISABLE_WEBHOOKS === "true") {
+    return NextResponse.json({ success: false, logs: [{ time: new Date().toISOString(), level: "error", message: "ItScope connection is currently disabled" }] });
   }
 
   const { shop, orderNumber } = await request.json();

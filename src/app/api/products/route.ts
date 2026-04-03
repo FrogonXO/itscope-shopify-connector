@@ -27,6 +27,10 @@ export async function POST(request: NextRequest) {
   const validTypes = ["Laptop", "Warranty", "Accessory"];
   const resolvedType = validTypes.includes(productType) ? productType : "Laptop";
 
+  if (process.env.DISABLE_ITSCOPE_CONNECTION === "true") {
+    return NextResponse.json({ error: "ItScope connection is currently disabled" }, { status: 503 });
+  }
+
   if (!shop || !sku || !distributorId) {
     return NextResponse.json(
       { error: "Missing required fields: shop, sku, distributorId" },
@@ -477,6 +481,11 @@ export async function PATCH(request: NextRequest) {
       { error: "Missing shop or id" },
       { status: 400 }
     );
+  }
+
+  // Relink calls ItScope to fetch distributor SKU
+  if (relinkShopify && process.env.DISABLE_ITSCOPE_CONNECTION === "true") {
+    return NextResponse.json({ error: "ItScope connection is currently disabled" }, { status: 503 });
   }
 
   // Relink: look up the actual Shopify product/variant/inventory IDs by SKU

@@ -6,7 +6,7 @@ import { getShopifyClient } from "@/lib/shopify";
 
 // Cron job: Sync stock levels from ItScope to Shopify
 export async function GET(request: NextRequest) {
-  if (process.env.DISABLE_WEBHOOKS === "true" || process.env.DISABLE_STOCK_SYNC === "true") {
+  if (process.env.DISABLE_ITSCOPE_CONNECTION === "true" || process.env.DISABLE_WEBHOOKS === "true" || process.env.DISABLE_STOCK_SYNC === "true") {
     return NextResponse.json({ ok: true, disabled: true });
   }
 

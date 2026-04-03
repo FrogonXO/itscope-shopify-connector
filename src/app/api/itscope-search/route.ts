@@ -12,6 +12,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (process.env.DISABLE_ITSCOPE_CONNECTION === "true") {
+    return NextResponse.json({ error: "ItScope connection is currently disabled" }, { status: 503 });
+  }
+
   try {
     const product = await searchProductBySku(sku);
 
